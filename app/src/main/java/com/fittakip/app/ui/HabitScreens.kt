@@ -233,13 +233,14 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
             item { HintText("Bu hareket için henüz set yok.") }
             return@LazyColumn
         }
+        val prog = progress ?: return@LazyColumn
         val heaviest = work.maxBy { it.weightKg }
         val mostReps = work.maxBy { it.reps }
         val bestSession = work.groupBy { it.epochDay }.maxBy { e -> e.value.sumOf { it.weightKg * it.reps } }
         item {
             FitCard {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MetricTile("Tahmini 1RM", "${progress!!.best.fmt()} kg", Modifier.weight(1f), FitColors.Lime)
+                    MetricTile("Tahmini 1RM", "${prog.best.fmt()} kg", Modifier.weight(1f), FitColors.Lime)
                     MetricTile("En ağır", "${heaviest.weightKg.clean()} × ${heaviest.reps}", Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -248,10 +249,10 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
                 }
                 HintText("${work.map { it.epochDay }.toSet().size} antrenman · ${work.size} set · ${prs.size} rekor")
                 state.profile?.let { p ->
-                    com.fittakip.app.domain.Calculator.strengthLevel(name, progress.best, p.weightKg, p.male)?.let { (lvl, f) ->
+                    com.fittakip.app.domain.Calculator.strengthLevel(name, prog.best, p.weightKg, p.male)?.let { (lvl, f) ->
                         Text("Güç seviyesi: $lvl", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
                         ProgressBar(f, FitColors.Lime)
-                        HintText("Vücut ağırlığının ${(progress.best / p.weightKg).fmt(2)} katı")
+                        HintText("Vücut ağırlığının ${(prog.best / p.weightKg).fmt(2)} katı")
                     }
                 }
                 com.fittakip.app.data.FORM_TIPS[com.fittakip.app.data.EXERCISES.firstOrNull { it.name.equals(name, true) }?.name ?: name]?.let {
@@ -261,7 +262,7 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
         item {
             SectionCard("Gelişim") {
-                TrendChart(progress!!.history, progress.fit, progress.fitStartDay)
+                TrendChart(prog.history, prog.fit, prog.fitStartDay)
             }
         }
         if (prs.isNotEmpty()) {

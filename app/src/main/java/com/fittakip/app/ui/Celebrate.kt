@@ -60,6 +60,7 @@ fun CelebrationDialog(c: Celebration, onDismiss: () -> Unit) {
         )
         is Celebration.Badge -> Triple(c.achievement.emoji, "Rozet kazandın!", "${c.achievement.title}\n${c.achievement.desc}")
         is Celebration.LevelUp -> Triple("⭐", "Seviye ${c.level}!", "Yeni unvanın: ${c.title}\nBöyle devam!")
+        is Celebration.Custom -> Triple(c.emoji, c.title, c.body)
     }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
