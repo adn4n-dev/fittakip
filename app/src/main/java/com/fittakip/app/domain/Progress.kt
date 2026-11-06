@@ -38,11 +38,11 @@ object Stats {
         if (reps <= 1) kg else kg * (1 + reps / 30.0)
 }
 
-enum class Verdict(val label: String) {
-    IMPROVING("Gelişiyorsun 📈"),
-    PLATEAU("Plato – yerinde sayıyorsun"),
-    DECLINING("Düşüş var 📉"),
-    NOT_ENOUGH_DATA("Tahmin için en az 3 farklı antrenman günü lazım")
+enum class Verdict(val label: String, val short: String) {
+    IMPROVING("Gelişiyorsun 📈", "Gelişiyor"),
+    PLATEAU("Plato – yerinde sayıyorsun", "Plato"),
+    DECLINING("Düşüş var 📉", "Düşüş"),
+    NOT_ENOUGH_DATA("Tahmin için en az 3 farklı antrenman günü lazım", "Az veri")
 }
 
 data class ExerciseProgress(
