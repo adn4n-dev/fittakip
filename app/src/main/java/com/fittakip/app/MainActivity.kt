@@ -15,6 +15,20 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -86,9 +100,10 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
     }
 
     LaunchedEffect(message) {
-        message?.let {
-            snackbar.showSnackbar(it)
+        message?.let { m ->
             vm.clearMessage()
+            val r = snackbar.showSnackbar(m.text, actionLabel = m.action, duration = if (m.action != null) SnackbarDuration.Long else SnackbarDuration.Short)
+            if (r == SnackbarResult.ActionPerformed) m.onAction?.invoke()
         }
     }
 
@@ -116,47 +131,39 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
         "Vücut" to Icons.Rounded.Accessibility
     )
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
-            if (sub == null) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp) {
-                    tabs.forEachIndexed { i, (label, icon) ->
-                        NavigationBarItem(
-                            selected = tab == i,
-                            onClick = {
-                                if (tab != i) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                tab = i
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label, maxLines = 1) }
-                        )
-                    }
+    GlowBackground {
+        Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            snackbarHost = { SnackbarHost(snackbar) },
+            bottomBar = {
+                if (sub == null) FloatingNav(tabs, tab) { i ->
+                    if (tab != i) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    tab = i
                 }
             }
-        }
-    ) { padding ->
-        Box(
-            Modifier
-                .padding(padding)
-                .fillMaxSize()
-        ) {
-            AnimatedContent(targetState = sub, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "sub") { s ->
-                when (s) {
-                    Sub.ACHIEVEMENTS -> AchievementsScreen(vm) { sub = null }
-                    Sub.REPORT -> WeeklyReportScreen(vm) { sub = null }
-                    Sub.SETTINGS -> SettingsScreen(vm, onBack = { sub = null }, onRequestNotifications = askNotifications)
-                    Sub.HABITS -> HabitsScreen(vm) { sub = null }
-                    Sub.STATS -> StatsScreen(vm) { sub = null }
-                    Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
-                    null -> Crossfade(targetState = tab, label = "tab") { t ->
-                        when (t) {
-                            0 -> TodayScreen(vm, onTab = { tab = it }, onOpen = { sub = it })
-                            1 -> NutritionScreen(vm)
-                            2 -> WorkoutScreen(vm, onOpenExercise = openExercise)
-                            3 -> ProgressScreen(vm, onOpenExercise = openExercise)
-                            else -> BodyScreen(vm)
+        ) { padding ->
+            Box(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+            ) {
+                AnimatedContent(targetState = sub, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "sub") { s ->
+                    when (s) {
+                        Sub.ACHIEVEMENTS -> AchievementsScreen(vm) { sub = null }
+                        Sub.REPORT -> WeeklyReportScreen(vm) { sub = null }
+                        Sub.SETTINGS -> SettingsScreen(vm, onBack = { sub = null }, onRequestNotifications = askNotifications, onProgram = { sub = Sub.PROGRAM })
+                        Sub.HABITS -> HabitsScreen(vm) { sub = null }
+                        Sub.STATS -> StatsScreen(vm) { sub = null }
+                        Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
+                        Sub.PROGRAM -> ProgramScreen(vm) { sub = null }
+                        null -> Crossfade(targetState = tab, label = "tab") { t ->
+                            when (t) {
+                                0 -> TodayScreen(vm, onTab = { tab = it }, onOpen = { sub = it })
+                                1 -> NutritionScreen(vm)
+                                2 -> WorkoutScreen(vm, onOpenExercise = openExercise)
+                                3 -> ProgressScreen(vm, onOpenExercise = openExercise)
+                                else -> BodyScreen(vm)
+                            }
                         }
                     }
                 }
@@ -166,5 +173,49 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
 
     celebrations.firstOrNull()?.let { c ->
         CelebrationDialog(c) { vm.dismissCelebration() }
+    }
+}
+
+
+/** Yüzen, hap şeklinde alt menü: seçili sekme vurgu renginde genişler. */
+@Composable
+private fun FloatingNav(tabs: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>, selected: Int, onSelect: (Int) -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(30.dp))
+                .background(androidx.compose.ui.graphics.Color(0xF2171A20))
+                .border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f), androidx.compose.foundation.shape.RoundedCornerShape(30.dp))
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { i, (label, icon) ->
+                val on = i == selected
+                val bg by animateColorAsState(if (on) FitColors.Lime else androidx.compose.ui.graphics.Color.Transparent, label = "bg")
+                val fg by animateColorAsState(if (on) androidx.compose.ui.graphics.Color(0xFF0E1200) else FitColors.Muted, label = "fg")
+                Row(
+                    Modifier
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                        .background(bg)
+                        .clickable { onSelect(i) }
+                        .animateContentSize()
+                        .padding(horizontal = if (on) 14.dp else 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(22.dp))
+                    if (on) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    }
+                }
+            }
+        }
     }
 }

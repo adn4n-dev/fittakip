@@ -28,16 +28,35 @@ data class AppSettings(
     val seenInit: Boolean = false,
     val seenAchievements: Set<String> = emptySet(),
     val lastLevel: Int = 1,
-    val lastQuestCelebration: Long = 0
+    val lastQuestCelebration: Long = 0,
+    val weekPlan: String = "",                       // "Push;OFF;Pull;..." (Pazartesi'den Pazar'a)
+    val hiddenCards: Set<String> = setOf("FASTING", "QUOTE", "BADGES"),
+    val checkinItems: Set<String> = setOf("SLEEP")
 ) {
+    /** 0 = Pazartesi … 6 = Pazar; boş = plan yok. */
+    val plan: List<String> get() = weekPlan.split(";").let { l -> List(7) { i -> l.getOrNull(i)?.trim() ?: "" } }
+    val hasPlan: Boolean get() = plan.any { it.isNotEmpty() }
+
     val frozen: Set<Long> get() = frozenDays.mapNotNull { it.toLongOrNull() }.toSet()
 
+    /** Satır biçimi: "Ad|Bench Press:4x8;Squat:3x10" (eski biçimde hedef yoksa 3×10). */
     val templates: List<WorkoutTemplate>
         get() = customTemplates.lines().mapNotNull { line ->
             val name = line.substringBefore("|").trim()
-            val ex = line.substringAfter("|", "").split(";").map { it.trim() }.filter { it.isNotEmpty() }
-            if (name.isEmpty() || ex.isEmpty()) null else WorkoutTemplate(name, ex)
+            val items = line.substringAfter("|", "").split(";").map { it.trim() }.filter { it.isNotEmpty() }.map { part ->
+                val ex = normalizeExercise(part.substringBefore(":"))
+                val scheme = part.substringAfter(":", "3x10").lowercase().split("x")
+                PlanItem(ex, scheme.getOrNull(0)?.toIntOrNull() ?: 3, scheme.getOrNull(1)?.toIntOrNull() ?: 10)
+            }
+            if (name.isEmpty() || items.isEmpty()) null else WorkoutTemplate(name, items)
         }
+
+    val allTemplates: List<WorkoutTemplate> get() = TEMPLATES + templates
+
+    /** epochDay için plandaki şablon adı; "" plan yok, OFF_DAY dinlenme günü. */
+    fun planFor(epochDay: Long): String = plan[java.time.LocalDate.ofEpochDay(epochDay).dayOfWeek.value - 1]
+
+    fun templateFor(epochDay: Long): WorkoutTemplate? = planFor(epochDay).let { n -> allTemplates.firstOrNull { it.name == n } }
 }
 
 /** Küçük ayarlar SharedPreferences'ta; değişiklikler StateFlow ile ekrana akar. */
@@ -72,7 +91,10 @@ class SettingsStore(context: Context) {
         seenInit = prefs.getBoolean("seenInit", false),
         seenAchievements = set("seenAchievements", emptySet()),
         lastLevel = prefs.getInt("lastLevel", 1),
-        lastQuestCelebration = prefs.getLong("lastQuestCelebration", 0)
+        lastQuestCelebration = prefs.getLong("lastQuestCelebration", 0),
+        weekPlan = prefs.getString("weekPlan", "") ?: "",
+        hiddenCards = set("hiddenCards", setOf("FASTING", "QUOTE", "BADGES")),
+        checkinItems = set("checkinItems", setOf("SLEEP"))
     )
 
     @Synchronized
@@ -103,6 +125,9 @@ class SettingsStore(context: Context) {
             .putStringSet("seenAchievements", HashSet(s.seenAchievements))
             .putInt("lastLevel", s.lastLevel)
             .putLong("lastQuestCelebration", s.lastQuestCelebration)
+            .putString("weekPlan", s.weekPlan)
+            .putStringSet("hiddenCards", HashSet(s.hiddenCards))
+            .putStringSet("checkinItems", HashSet(s.checkinItems))
             .apply()
         _state.value = s
     }

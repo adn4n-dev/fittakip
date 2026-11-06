@@ -131,3 +131,11 @@ data class ProgressPhoto(
     val epochDay: Long,
     val path: String
 )
+
+/** Kayıtlı öğün: birden çok yemeği tek dokunuşla eklemek için. items = JSON dizi. */
+@Entity(tableName = "saved_meal")
+data class SavedMeal(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val items: String
+)

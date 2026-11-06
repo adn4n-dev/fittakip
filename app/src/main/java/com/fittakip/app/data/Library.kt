@@ -130,9 +130,9 @@ val MUSCLES = listOf("Göğüs", "Sırt", "Bacak", "Omuz", "Kol", "Karın")
 val EXERCISES = listOf(
     ExerciseDef("Bench Press", "Göğüs"), ExerciseDef("Incline Bench Press", "Göğüs"),
     ExerciseDef("Dumbbell Press", "Göğüs"), ExerciseDef("Incline Dumbbell Press", "Göğüs"),
-    ExerciseDef("Cable Fly", "Göğüs"), ExerciseDef("Dips", "Göğüs"), ExerciseDef("Şınav", "Göğüs"),
+    ExerciseDef("Cable Fly", "Göğüs"), ExerciseDef("Dips", "Göğüs"), ExerciseDef("Push-up", "Göğüs"),
     ExerciseDef("Deadlift", "Sırt"), ExerciseDef("Barbell Row", "Sırt"), ExerciseDef("Lat Pulldown", "Sırt"),
-    ExerciseDef("Barfiks", "Sırt"), ExerciseDef("Seated Cable Row", "Sırt"), ExerciseDef("Dumbbell Row", "Sırt"),
+    ExerciseDef("Pull-up", "Sırt"), ExerciseDef("Seated Cable Row", "Sırt"), ExerciseDef("Dumbbell Row", "Sırt"),
     ExerciseDef("Face Pull", "Sırt"),
     ExerciseDef("Squat", "Bacak"), ExerciseDef("Front Squat", "Bacak"), ExerciseDef("Leg Press", "Bacak"),
     ExerciseDef("Romanian Deadlift", "Bacak"), ExerciseDef("Leg Curl", "Bacak"), ExerciseDef("Leg Extension", "Bacak"),
@@ -149,15 +149,56 @@ val EXERCISES = listOf(
 fun muscleOf(exercise: String): String =
     EXERCISES.firstOrNull { it.name.equals(exercise.trim(), ignoreCase = true) }?.muscle ?: "Diğer"
 
-data class WorkoutTemplate(val name: String, val exercises: List<String>)
+/** Programdaki bir hareket: hedef set × tekrar. */
+data class PlanItem(val exercise: String, val sets: Int = 3, val reps: Int = 10) {
+    val label get() = "$sets×$reps"
+}
+
+data class WorkoutTemplate(val name: String, val items: List<PlanItem>) {
+    val exercises: List<String> get() = items.map { it.exercise }
+}
+
+private fun t(name: String, vararg items: Triple<String, Int, Int>) =
+    WorkoutTemplate(name, items.map { PlanItem(it.first, it.second, it.third) })
 
 val TEMPLATES = listOf(
-    WorkoutTemplate("Push", listOf("Bench Press", "Overhead Press", "Incline Dumbbell Press", "Lateral Raise", "Triceps Pushdown")),
-    WorkoutTemplate("Pull", listOf("Deadlift", "Barfiks", "Barbell Row", "Face Pull", "Barbell Curl")),
-    WorkoutTemplate("Legs", listOf("Squat", "Romanian Deadlift", "Leg Press", "Leg Curl", "Calf Raise")),
-    WorkoutTemplate("Full Body", listOf("Squat", "Bench Press", "Barbell Row", "Overhead Press", "Plank")),
-    WorkoutTemplate("Üst Vücut", listOf("Bench Press", "Barbell Row", "Overhead Press", "Lat Pulldown", "Dumbbell Curl", "Triceps Pushdown")),
-    WorkoutTemplate("Alt Vücut", listOf("Squat", "Romanian Deadlift", "Lunge", "Leg Extension", "Calf Raise"))
+    t("Push", Triple("Bench Press", 4, 8), Triple("Overhead Press", 3, 8), Triple("Incline Dumbbell Press", 3, 10), Triple("Lateral Raise", 3, 15), Triple("Triceps Pushdown", 3, 12)),
+    t("Pull", Triple("Deadlift", 3, 5), Triple("Pull-up", 3, 8), Triple("Barbell Row", 3, 10), Triple("Face Pull", 3, 15), Triple("Barbell Curl", 3, 12)),
+    t("Legs", Triple("Squat", 4, 6), Triple("Romanian Deadlift", 3, 10), Triple("Leg Press", 3, 12), Triple("Leg Curl", 3, 12), Triple("Calf Raise", 4, 15)),
+    t("Full Body", Triple("Squat", 3, 8), Triple("Bench Press", 3, 8), Triple("Barbell Row", 3, 10), Triple("Overhead Press", 3, 10), Triple("Plank", 3, 1)),
+    t("Üst Vücut", Triple("Bench Press", 4, 8), Triple("Barbell Row", 4, 8), Triple("Overhead Press", 3, 10), Triple("Lat Pulldown", 3, 10), Triple("Dumbbell Curl", 3, 12), Triple("Triceps Pushdown", 3, 12)),
+    t("Alt Vücut", Triple("Squat", 4, 8), Triple("Romanian Deadlift", 3, 10), Triple("Lunge", 3, 12), Triple("Leg Extension", 3, 15), Triple("Calf Raise", 4, 15))
+)
+
+/** Eski kayıtlardaki isimleri yenileriyle eşler. */
+fun normalizeExercise(name: String): String = when (name.trim().lowercase()) {
+    "barfiks" -> "Pull-up"
+    "şınav" -> "Push-up"
+    else -> name.trim()
+}
+
+// ---------------- Haftalık program ----------------
+
+const val OFF_DAY = "OFF"
+
+val WEEKDAY_NAMES = listOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+
+/** Hazır haftalık programlar: 7 gün, Pazartesi'den başlar. */
+data class WeekPreset(val name: String, val desc: String, val days: List<String>)
+
+val WEEK_PRESETS = listOf(
+    WeekPreset("PPL · 6 gün", "İleri seviye, her kas haftada 2 kez", listOf("Push", "Pull", "Legs", "Push", "Pull", "Legs", OFF_DAY)),
+    WeekPreset("Üst / Alt · 4 gün", "Orta seviye için ideal denge", listOf("Üst Vücut", "Alt Vücut", OFF_DAY, "Üst Vücut", "Alt Vücut", OFF_DAY, OFF_DAY)),
+    WeekPreset("Full Body · 3 gün", "Yeni başlayanlar için", listOf("Full Body", OFF_DAY, "Full Body", OFF_DAY, "Full Body", OFF_DAY, OFF_DAY)),
+    WeekPreset("PPL · 3 gün", "Az vakti olanlar için", listOf("Push", OFF_DAY, "Pull", OFF_DAY, "Legs", OFF_DAY, OFF_DAY))
+)
+
+val OFF_DAY_TIPS = listOf(
+    "20-30 dk tempolu yürüyüş toparlanmayı hızlandırır.",
+    "10 dk esneme veya foam roller ile kaslarını gevşet.",
+    "Bugün en az 8 saat uyumayı hedefle.",
+    "Proteini düşürme; kaslar dinlenirken büyür.",
+    "Su hedefini tamamla, yarınki antrenmanın daha iyi geçer."
 )
 
 // ---------------- Kardiyo ----------------
@@ -222,7 +263,7 @@ val FORM_TIPS = mapOf(
     "Romanian Deadlift" to "Dizler hafif bükük, kalçayı geriye it. Arka bacakta gerilmeyi hissedince yukarı dön.",
     "Overhead Press" to "Karın ve kalçayı sık, beli bükme. Bar yüzüne yakın yükselsin, yukarıda başını öne al.",
     "Barbell Row" to "Gövde ~45°, sırt düz. Barı göbeğe çek, dirsekleri arkaya götür, savurma.",
-    "Barfiks" to "Omuzları aşağı çek, göğsü bara yaklaştır. Aşağıda kolları tam aç.",
+    "Pull-up" to "Omuzları aşağı çek, göğsü bara yaklaştır. Aşağıda kolları tam aç.",
     "Lat Pulldown" to "Barı göğsün üstüne çek, gövdeyi hafif geriye yatır, omuzları kulaklardan uzak tut.",
     "Leg Press" to "Belini sehpadan kaldırma, dizleri tam kilitleme.",
     "Lateral Raise" to "Hafif ağırlık, dirsekler hafif bükük. Omuz hizasına kadar kaldır, yavaş indir.",

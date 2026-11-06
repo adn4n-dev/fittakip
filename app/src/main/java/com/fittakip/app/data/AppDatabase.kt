@@ -11,9 +11,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         Profile::class, FoodEntry::class, WorkoutSet::class, BodyWeight::class,
         WaterLog::class, CardioEntry::class, BodyMeasure::class,
-        HabitLog::class, FastEntry::class, WorkoutSession::class, CustomFood::class, ProgressPhoto::class
+        HabitLog::class, FastEntry::class, WorkoutSession::class, CustomFood::class, ProgressPhoto::class,
+        SavedMeal::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -71,13 +72,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 → v4: kayıtlı öğünler + hareket isimlerinin tek dile çekilmesi. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `saved_meal` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `items` TEXT NOT NULL)"
+                )
+                db.execSQL("UPDATE `workout_set` SET `exercise` = 'Pull-up' WHERE LOWER(`exercise`) = 'barfiks'")
+                db.execSQL("UPDATE `workout_set` SET `exercise` = 'Push-up' WHERE `exercise` = 'Şınav' OR `exercise` = 'şınav'")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "fittakip.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
     }
 }

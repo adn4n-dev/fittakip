@@ -127,11 +127,22 @@ class MorningWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val days = AppDatabase.get(applicationContext).dao().activeDays().toSet()
         val streak = Gamification.currentStreak(days, today)
         val quote = com.fittakip.app.data.QUOTES[(today % com.fittakip.app.data.QUOTES.size).toInt()]
-        Reminders.show(
-            applicationContext,
-            if (streak > 0) "Günaydın! 🔥 $streak günlük serin seni bekliyor" else "Günaydın! Bugün yeni bir başlangıç ☀️",
-            quote, 2
-        )
+        val st = com.fittakip.app.data.SettingsStore(applicationContext).state.value
+        val dayName = com.fittakip.app.data.WEEKDAY_NAMES[LocalDate.now().dayOfWeek.value - 1]
+        val plan = st.planFor(today)
+        val tpl = st.templateFor(today)
+        val title = when {
+            plan == com.fittakip.app.data.OFF_DAY -> "Günaydın! $dayName: off day 😌"
+            tpl != null -> "Günaydın! $dayName: ${tpl.name} günü 💪"
+            streak > 0 -> "Günaydın! 🔥 $streak günlük serin seni bekliyor"
+            else -> "Günaydın! Bugün yeni bir başlangıç ☀️"
+        }
+        val body = when {
+            plan == com.fittakip.app.data.OFF_DAY -> "Bugün dinlen. Hafif yürüyüş, esneme ve bol su. Kaslar dinlenirken büyür."
+            tpl != null -> "Bugünkü görevin: " + tpl.items.joinToString(", ") { "${it.exercise} ${it.label}" }
+            else -> quote
+        }
+        Reminders.show(applicationContext, title, body, 2)
         return Result.success()
     }
 }

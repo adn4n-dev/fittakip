@@ -1,6 +1,14 @@
 package com.fittakip.app.ui
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -71,18 +79,22 @@ fun longDayLabel(epochDay: Long): String =
 
 @Composable
 fun ScreenHeader(title: String, subtitle: String? = null) {
-    Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+    Column(Modifier.padding(top = 10.dp, bottom = 6.dp)) {
         subtitle?.let {
             Text(
                 it.uppercase(TR),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                letterSpacing = 1.2.sp
+                color = FitColors.Lime.copy(alpha = 0.85f),
+                letterSpacing = 1.6.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
-        Text(title, style = MaterialTheme.typography.headlineLarge)
+        Text(title, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 38.sp))
     }
 }
+
+/** Cam efektli kart: hafif degrade dolgu + ince parlak kenar. */
+private val CardShape = RoundedCornerShape(28.dp)
 
 @Composable
 fun FitCard(
@@ -90,13 +102,59 @@ fun FitCard(
     padding: Dp = 18.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer
-    ) {
-        Column(Modifier.padding(padding), verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
-    }
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF1C1F26), Color(0xFF15171C))))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.02f))), CardShape)
+            .padding(padding),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        content = content
+    )
+}
+
+/** Vurgulu kahraman kartı: tema renginden maviye degrade, koyu yazı. */
+@Composable
+fun GlowCard(
+    modifier: Modifier = Modifier,
+    colors: List<Color> = listOf(FitColors.Lime, Color(0xFF4DE1C1)),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(Brush.linearGradient(colors))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content
+    )
+}
+
+/** Ekran arkasında yavaşça nefes alan renk ışıltıları. */
+@Composable
+fun GlowBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val accent = FitColors.Lime
+    val pulse by rememberInfiniteTransition(label = "glow").animateFloat(
+        0.85f, 1.15f, infiniteRepeatable(tween(6000), RepeatMode.Reverse), label = "p"
+    )
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(FitColors.Bg)
+            .drawBehind {
+                drawCircle(
+                    Brush.radialGradient(listOf(accent.copy(alpha = 0.16f), Color.Transparent), center = Offset(size.width * 0.1f, 0f), radius = size.width * 0.9f * pulse),
+                    radius = size.width * 0.9f * pulse, center = Offset(size.width * 0.1f, 0f)
+                )
+                drawCircle(
+                    Brush.radialGradient(listOf(FitColors.Blue.copy(alpha = 0.10f), Color.Transparent), center = Offset(size.width, size.height * 0.35f), radius = size.width * 0.8f / pulse),
+                    radius = size.width * 0.8f / pulse, center = Offset(size.width, size.height * 0.35f)
+                )
+            },
+        content = content
+    )
 }
 
 @Composable
@@ -170,6 +228,7 @@ fun Pill(text: String, color: Color, modifier: Modifier = Modifier, onClick: (()
     var m = modifier
         .clip(shape)
         .background(color.copy(alpha = 0.16f))
+        .border(1.dp, color.copy(alpha = 0.22f), shape)
     if (onClick != null) m = m.clickable(onClick = onClick)
     Text(
         text,
@@ -185,7 +244,7 @@ fun MetricTile(label: String, value: String, modifier: Modifier = Modifier, colo
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(Color.White.copy(alpha = 0.05f))
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -273,8 +332,8 @@ fun SelectCard(
         onClick = onClick,
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        color = if (selected) accent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.5.dp, if (selected) accent else Color.Transparent)
+        color = if (selected) accent.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f),
+        border = BorderStroke(1.5.dp, if (selected) accent else Color.White.copy(alpha = 0.06f))
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Text(
@@ -297,19 +356,29 @@ fun PrimaryButton(
     icon: ImageVector? = null,
     modifier: Modifier = Modifier
 ) {
+    val shape = RoundedCornerShape(18.dp)
+    val brush = if (enabled) Brush.horizontalGradient(listOf(FitColors.Lime, FitColors.Lime.copy(alpha = 0.75f).compositeOver(Color(0xFF4DE1C1))))
+    else Brush.horizontalGradient(listOf(FitColors.CardHigh, FitColors.CardHigh))
     Button(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
+            contentColor = Color(0xFF0E1200), disabledContentColor = FitColors.Muted
+        ),
+        contentPadding = PaddingValues(horizontal = 18.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(56.dp)
+            .clip(shape)
+            .background(brush)
     ) {
         if (icon != null) {
             Icon(icon, contentDescription = null)
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, fontWeight = FontWeight.Bold)
+        Text(text, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
     }
 }
 
@@ -331,6 +400,40 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
 }
 
 // ---------- Göstergeler ----------
+
+/** İç içe üç halka (kalori, protein, su) ortada kalan kalori. */
+@Composable
+fun TripleRing(
+    kcal: Float, protein: Float, water: Float,
+    centerTop: String, centerBottom: String, overColor: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val a by animateFloatAsState(kcal.coerceIn(0f, 1f), tween(900), label = "k")
+    val b by animateFloatAsState(protein.coerceIn(0f, 1f), tween(1000), label = "p")
+    val c by animateFloatAsState(water.coerceIn(0f, 1f), tween(1100), label = "w")
+    val kColor = if (overColor) FitColors.Red else FitColors.Lime
+    val track = Color.White.copy(alpha = 0.06f)
+    Box(modifier.size(172.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 14.dp.toPx()
+            val gap = 4.dp.toPx()
+            listOf(Triple(a, kColor, 0), Triple(b, FitColors.Blue, 1), Triple(c, Color(0xFF4DE1E1), 2)).forEach { (v, col, i) ->
+                val inset = stroke / 2 + i * (stroke + gap)
+                val tl = Offset(inset, inset)
+                val sz = Size(size.width - inset * 2, size.height - inset * 2)
+                drawArc(track, -90f, 360f, false, tl, sz, style = Stroke(stroke))
+                if (v > 0f) drawArc(
+                    Brush.sweepGradient(listOf(col.copy(alpha = 0.6f), col, col)),
+                    -90f, 360f * v, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(centerTop, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+            Text(centerBottom, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
 
 @Composable
 fun CalorieRing(eaten: Int, target: Int, modifier: Modifier = Modifier) {

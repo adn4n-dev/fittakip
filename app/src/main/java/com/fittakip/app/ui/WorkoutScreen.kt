@@ -7,6 +7,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.rounded.Check
@@ -43,6 +46,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val restEnd by vm.restEnd.collectAsStateWithLifecycle()
     val state by vm.profile.collectAsStateWithLifecycle()
+    val wDay by vm.workoutDay.collectAsStateWithLifecycle()
 
     val names = remember(sets) {
         (sets.map { it.exercise.trim() } + EXERCISES.map { it.name }).distinctBy { it.lowercase() }
@@ -52,7 +56,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     var kg by rememberSaveable { mutableStateOf("20") }
     var reps by rememberSaveable { mutableStateOf("8") }
     var note by rememberSaveable { mutableStateOf("") }
-    var toDelete by remember { mutableStateOf<WorkoutSet?>(null) }
+    var editing by remember { mutableStateOf<WorkoutSet?>(null) }
     var tools by rememberSaveable { mutableStateOf(false) }
     var cardioOpen by rememberSaveable { mutableStateOf(false) }
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
@@ -70,9 +74,13 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
         }
     }
 
-    val allTemplates = TEMPLATES + settings.templates
-    val template = allTemplates.firstOrNull { it.name == settings.activeTemplate }
-    val doneToday = sets.filter { it.epochDay == vm.today }.map { it.exercise.trim().lowercase() }.toSet()
+    val allTemplates = settings.allTemplates
+    val planned = settings.templateFor(wDay)
+    val isOff = settings.planFor(wDay) == com.fittakip.app.data.OFF_DAY
+    val template = allTemplates.firstOrNull { it.name == settings.activeTemplate } ?: planned
+    val daySets = sets.filter { it.epochDay == wDay && !it.warmup }
+    fun doneSets(ex: String) = daySets.count { it.exercise.trim().equals(ex, true) }
+    val lastToday = sets.firstOrNull { it.epochDay == wDay && it.exercise.trim().equals(exercise.trim(), true) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -81,18 +89,31 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { ScreenHeader("Antrenman", longDayLabel(vm.today)) }
+                Box(Modifier.weight(1f)) { ScreenHeader("Antrenman", longDayLabel(wDay)) }
+                IconButton(onClick = { vm.shiftWorkoutDay(-1) }) { Icon(Icons.Rounded.ChevronLeft, "Önceki gün") }
+                IconButton(onClick = { vm.shiftWorkoutDay(1) }, enabled = wDay < vm.today) { Icon(Icons.Rounded.ChevronRight, "Sonraki gün") }
                 IconButton(onClick = { library = true }) { Icon(Icons.AutoMirrored.Rounded.MenuBook, "Hareket kütüphanesi") }
                 IconButton(onClick = { tools = true }) { Icon(Icons.Rounded.Calculate, "Araçlar") }
             }
         }
 
+        if (wDay != vm.today) {
+            item { Pill("Geçmiş güne set ekliyorsun: ${dayLabel(wDay, true)} · bugüne dön", FitColors.Blue, onClick = { vm.shiftWorkoutDay((vm.today - wDay).toInt()) }) }
+        }
+        if (isOff && settings.activeTemplate.isEmpty() && wDay == vm.today) {
+            item {
+                FitCard {
+                    Text("Bugün off day 😌", style = MaterialTheme.typography.titleLarge)
+                    HintText("Programına göre bugün dinlenme günü. Yine de antrenman yapmak istersen aşağıdan bir program seçebilir ya da hafif kardiyo ekleyebilirsin.")
+                }
+            }
+        }
         item(key = "session") { SessionCard(settings.sessionStart, vm) }
         restEnd?.let { end -> item(key = "rest") { RestTimer(end, vm) } }
 
         // Şablon
         item {
-            SectionCard("Bugünün planı", icon = Icons.Rounded.ListAlt, action = if (template != null) {
+            SectionCard(if (template != null && template == planned) "Programdaki antrenman" else "Bugünün planı", icon = Icons.Rounded.ListAlt, action = if (template != null && settings.activeTemplate.isNotEmpty()) {
                 { IconButton(onClick = { vm.updateSettings { it.copy(activeTemplate = "") } }) { Icon(Icons.Rounded.Close, "Planı kapat") } }
             } else null) {
                 if (template == null) {
@@ -102,12 +123,12 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         allTemplates.forEach { t ->
                             Pill(t.name, FitColors.Lime, onClick = {
                                 vm.updateSettings { it.copy(activeTemplate = t.name) }
-                                t.exercises.firstOrNull { it.lowercase() !in doneToday }?.let { pick(it) }
+                                t.items.firstOrNull { doneSets(it.exercise) < it.sets }?.let { pick(it.exercise) }
                             })
                         }
                     }
                 } else {
-                    val done = template.exercises.count { it.lowercase() in doneToday }
+                    val done = template.items.count { doneSets(it.exercise) >= it.sets }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(template.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         Pill("$done / ${template.exercises.size}", if (done == template.exercises.size) FitColors.Lime else FitColors.Orange)
@@ -116,18 +137,26 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     if (settings.templates.any { it.name == template.name }) {
                         TextButton(onClick = { vm.deleteTemplate(template.name) }) { Text("Bu programı sil", color = MaterialTheme.colorScheme.error) }
                     }
-                    template.exercises.forEach { ex ->
-                        val isDone = ex.lowercase() in doneToday
+                    template.items.forEach { item ->
+                        val ex = item.exercise
+                        val n = doneSets(ex)
+                        val isDone = n >= item.sets
                         Surface(
-                            onClick = { pick(ex) }, shape = RoundedCornerShape(14.dp),
-                            color = if (exercise.equals(ex, true)) FitColors.Lime.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            onClick = { pick(ex) }, shape = RoundedCornerShape(16.dp),
+                            color = if (exercise.equals(ex, true)) FitColors.Lime.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (isDone) "✅" else "⬜")
-                                Spacer(Modifier.width(10.dp))
-                                Text(ex, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                                HintText(muscleOf(ex))
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (isDone) "✅" else "🏋️")
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(ex, style = MaterialTheme.typography.titleSmall)
+                                        HintText("${muscleOf(ex)} · hedef ${item.sets} set × ${item.reps} tekrar")
+                                    }
+                                    Text("${n.coerceAtMost(item.sets)}/${item.sets}", style = MaterialTheme.typography.titleMedium, color = if (isDone) FitColors.Lime else MaterialTheme.colorScheme.onSurface)
+                                }
+                                ProgressBar(n.toFloat() / item.sets, if (isDone) FitColors.Lime else FitColors.Orange, 5.dp)
                             }
                         }
                     }
@@ -156,6 +185,16 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                             Text(tip, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                }
+                lastToday?.let { last ->
+                    SecondaryButton(
+                        "Son seti tekrarla · ${last.weightKg.clean()} × ${last.reps}",
+                        onClick = { vm.addSet(last.exercise, last.weightKg, last.reps, "", last.warmup, last.rpe) },
+                        icon = Icons.Rounded.Replay, modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                template?.items?.firstOrNull { it.exercise.equals(exercise.trim(), true) }?.let { item ->
+                    HintText("Hedef: ${item.sets} set × ${item.reps} tekrar · yapılan ${doneSets(item.exercise)} set")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Stepper(kg, { kg = it }, "Ağırlık (kg)", 2.5, Modifier.weight(1f))
@@ -198,7 +237,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     enabled = valid,
                     icon = Icons.Rounded.Check
                 )
-                HintText("Kaydedince ${settings.restSeconds} sn dinlenme sayacı başlar. Silmek için geçmişteki sete dokun.")
+                HintText("Kaydedince ${settings.restSeconds} sn dinlenme sayacı başlar; telefon kilitliyken de süre dolunca titrer. Düzeltmek için geçmişteki sete dokun.")
             }
         }
 
@@ -231,7 +270,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     title = if (day == vm.today) "Bugün" else dayLabel(day),
                     sets = sets.filter { it.epochDay == day },
                     cardio = cardio.filter { it.epochDay == day },
-                    onSetClick = { toDelete = it },
+                    onSetClick = { editing = it },
                     onCardioDelete = { vm.deleteCardio(it) },
                     onShare = { vm.share(vm.workoutShareText(day)) },
                     onExercise = onOpenExercise
@@ -243,18 +282,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
         }
     }
 
-    toDelete?.let { s ->
-        AlertDialog(
-            onDismissRequest = { toDelete = null },
-            title = { Text("Seti sil?") },
-            text = { Text("${s.exercise} · ${s.weightKg.clean()} kg × ${s.reps}" + if (s.note.isNotBlank()) "\n📝 ${s.note}" else "") },
-            confirmButton = {
-                TextButton(onClick = { vm.deleteSet(s); toDelete = null }) { Text("Sil", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Vazgeç") } },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
-    }
+    editing?.let { s -> EditSetDialog(s, onDismiss = { editing = null }, onSave = { vm.updateSet(it); editing = null }, onDelete = { vm.deleteSet(s); editing = null }) }
 
     if (tools) ToolsSheet(initialKg = kg.toNum() ?: 60.0) { tools = false }
     if (newTemplate) NewTemplateDialog(onDismiss = { newTemplate = false }) { n, ex ->
@@ -445,4 +473,44 @@ private fun ToolsSheet(initialKg: Double, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+
+@Composable
+private fun EditSetDialog(s: WorkoutSet, onDismiss: () -> Unit, onSave: (WorkoutSet) -> Unit, onDelete: () -> Unit) {
+    var kg by remember { mutableStateOf(s.weightKg.clean()) }
+    var reps by remember { mutableStateOf(s.reps.toString()) }
+    var warm by remember { mutableStateOf(s.warmup) }
+    var rpe by remember { mutableStateOf(s.rpe) }
+    var note by remember { mutableStateOf(s.note) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${s.exercise} · ${dayLabel(s.epochDay)}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Stepper(kg, { kg = it }, "Ağırlık", 2.5, Modifier.weight(1f))
+                    Stepper(reps, { reps = it }, "Tekrar", 1.0, Modifier.weight(1f))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = warm, onCheckedChange = { warm = it })
+                    Text("Isınma seti")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(6.0, 7.0, 8.0, 9.0, 10.0).forEach { r -> SelectCard(rpe == r, { rpe = if (rpe == r) null else r }, r.clean(), Modifier.weight(1f)) }
+                }
+                TextInput(note, { note = it }, "Not")
+            }
+        },
+        confirmButton = {
+            val w = kg.toNum()
+            val r = reps.toNum()?.toInt()
+            TextButton(
+                onClick = { onSave(s.copy(weightKg = w!!, reps = r!!, warmup = warm, rpe = rpe, note = note.trim())) },
+                enabled = w != null && w >= 0 && r != null && r in 1..100
+            ) { Text("Kaydet") }
+        },
+        dismissButton = { TextButton(onClick = onDelete) { Text("Sil", color = MaterialTheme.colorScheme.error) } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
 }

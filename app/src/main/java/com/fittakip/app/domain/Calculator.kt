@@ -73,6 +73,35 @@ object Calculator {
     fun calculate(p: Profile, st: AppSettings): CalorieResult =
         calculate(p.male, p.age, p.heightCm, p.weightKg, p.activity, Goal.from(p.goal), st.kcalAdjust, st.proteinPerKg, st.fatPct)
 
+    /**
+     * Gerçek kalori ihtiyacı: son 28 günde ortalama alınan kalori − (kilo eğimi × 7700 kcal/kg).
+     * En az 14 gün yemek kaydı ve 14 güne yayılmış 6 tartı gerekir.
+     */
+    data class AdaptiveTdee(val tdee: Int, val avgIntake: Int, val kgPerWeek: Double, val loggedDays: Int, val confidence: String)
+
+    fun adaptiveTdee(
+        foods: List<com.fittakip.app.data.FoodEntry>,
+        weights: List<com.fittakip.app.data.BodyWeight>,
+        today: Long,
+        window: Int = 28
+    ): AdaptiveTdee? {
+        val from = today - window
+        val byDay = foods.filter { it.epochDay in from until today }.groupBy { it.epochDay }.mapValues { e -> e.value.sumOf { it.kcal } }
+            .filterValues { it >= 800 } // yarım kalmış günleri sayma
+        val ws = weights.filter { it.epochDay in from..today }.sortedBy { it.epochDay }
+        if (byDay.size < 14 || ws.size < 6 || ws.last().epochDay - ws.first().epochDay < 14) return null
+        val x0 = ws.first().epochDay
+        val fit = Stats.linearFit(ws.map { (it.epochDay - x0).toDouble() }, ws.map { it.kg }) ?: return null
+        val avg = byDay.values.average()
+        val tdee = avg - fit.slope * 7700
+        val conf = when {
+            byDay.size >= 24 && ws.size >= 12 -> "Yüksek"
+            byDay.size >= 18 -> "Orta"
+            else -> "Düşük"
+        }
+        return AdaptiveTdee(tdee.roundToInt(), avg.roundToInt(), fit.slope * 7, byDay.size, conf)
+    }
+
     /** BMI 18,5–24,9 aralığına denk gelen kilo aralığı. */
     fun idealWeightRange(cm: Double): Pair<Double, Double> {
         val m2 = (cm / 100) * (cm / 100)

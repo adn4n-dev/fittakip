@@ -19,6 +19,9 @@ import androidx.compose.ui.unit.dp
 import com.fittakip.app.data.EXERCISES
 import com.fittakip.app.data.FORM_TIPS
 import com.fittakip.app.data.MUSCLES
+import com.fittakip.app.data.PlanItem
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
 
 /** Antrenman kronometresi: başlat, süre akar, bitirince oturum kaydedilir. */
@@ -36,7 +39,7 @@ fun SessionCard(start: Long, vm: AppViewModel) {
         }
     }
     val sec = ((now - start) / 1000).coerceAtLeast(0)
-    Surface(shape = RoundedCornerShape(24.dp), color = FitColors.Blue.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(28.dp), color = FitColors.Blue.copy(alpha = 0.14f), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Timer, null, tint = FitColors.Blue)
             Spacer(Modifier.width(10.dp))
@@ -53,30 +56,42 @@ fun SessionCard(start: Long, vm: AppViewModel) {
     }
 }
 
+private val SCHEMES = listOf(3 to 10, 4 to 8, 5 to 5, 3 to 12, 4 to 6, 3 to 15)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun NewTemplateDialog(onDismiss: () -> Unit, onSave: (String, List<String>) -> Unit) {
+fun NewTemplateDialog(onDismiss: () -> Unit, onSave: (String, List<PlanItem>) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
-    var chosen by remember { mutableStateOf(listOf<String>()) }
+    var chosen by remember { mutableStateOf(listOf<PlanItem>()) }
     var muscle by remember { mutableStateOf(MUSCLES.first()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Kendi programın") },
+        title = { Text("Kendi antrenmanın") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextInput(name, { name = it }, "Program adı (ör. Pazartesi)")
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                TextInput(name, { name = it }, "Ad (ör. Göğüs-Kol)")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     MUSCLES.forEach { m -> Pill(m, if (m == muscle) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = m }) }
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     EXERCISES.filter { it.muscle == muscle }.forEach { e ->
-                        val on = e.name in chosen
-                        Pill(if (on) "✓ ${e.name}" else e.name, if (on) FitColors.Orange else MaterialTheme.colorScheme.onSurface, onClick = {
-                            chosen = if (on) chosen - e.name else chosen + e.name
+                        val on = chosen.any { it.exercise == e.name }
+                        Pill(if (on) "✓ ${e.name}" else "+ ${e.name}", if (on) FitColors.Orange else MaterialTheme.colorScheme.onSurface, onClick = {
+                            chosen = if (on) chosen.filter { it.exercise != e.name } else chosen + PlanItem(e.name, 3, 10)
                         })
                     }
                 }
-                HintText(if (chosen.isEmpty()) "Hareketleri sırayla seç." else "Sıra: " + chosen.joinToString(" → "))
+                if (chosen.isEmpty()) HintText("Hareketleri sırayla seç. Set × tekrar hedefini sonra dokunarak değiştirebilirsin.")
+                chosen.forEachIndexed { i, item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i + 1}. ${item.exercise}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Pill(item.label, FitColors.Lime, onClick = {
+                            val idx = SCHEMES.indexOfFirst { it.first == item.sets && it.second == item.reps }
+                            val next = SCHEMES[(idx + 1) % SCHEMES.size]
+                            chosen = chosen.toMutableList().also { l -> l[i] = item.copy(sets = next.first, reps = next.second) }
+                        })
+                    }
+                }
             }
         },
         confirmButton = {

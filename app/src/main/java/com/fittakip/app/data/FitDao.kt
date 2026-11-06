@@ -136,6 +136,25 @@ interface FitDao {
     @Delete
     suspend fun deletePhoto(p: ProgressPhoto)
 
+    @androidx.room.Update
+    suspend fun updateSet(set: WorkoutSet)
+
+    // Kayıtlı öğünler
+    @Query("SELECT * FROM saved_meal ORDER BY name")
+    fun savedMeals(): Flow<List<SavedMeal>>
+
+    @Insert
+    suspend fun addSavedMeal(m: SavedMeal)
+
+    @Delete
+    suspend fun deleteSavedMeal(m: SavedMeal)
+
+    @Insert
+    suspend fun insertSet(set: WorkoutSet)
+
+    @Insert
+    suspend fun insertFood(entry: FoodEntry)
+
     // Widget için
     @Query("SELECT COALESCE(SUM(kcal), 0) FROM food WHERE epochDay = :day")
     suspend fun kcalOn(day: Long): Int
@@ -181,6 +200,10 @@ interface FitDao {
     @Query("DELETE FROM session") suspend fun clearSessions()
     @Query("DELETE FROM custom_food") suspend fun clearCustomFoods()
     @Query("DELETE FROM photo") suspend fun clearPhotos()
+
+    @Query("SELECT * FROM saved_meal") suspend fun dumpSavedMeals(): List<SavedMeal>
+    @Insert suspend fun insertSavedMeals(list: List<SavedMeal>)
+    @Query("DELETE FROM saved_meal") suspend fun clearSavedMeals()
 
     @Query("DELETE FROM profile") suspend fun clearProfile()
     @Query("DELETE FROM food") suspend fun clearFoods()

@@ -198,7 +198,7 @@ private fun CompareRow(label: String, now: Double?, before: Double?, unit: Strin
 // ---------------- Ayarlar ----------------
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications: () -> Unit, onProgram: () -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val state by vm.profile.collectAsStateWithLifecycle()
     var editProfile by rememberSaveable { mutableStateOf(false) }
@@ -232,6 +232,15 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                     val p = state.profile!!
                     HintText("${if (p.male) "Erkek" else "Kadın"} · ${p.age} yaş · ${p.heightCm.clean()} cm · ${p.weightKg.clean()} kg" +
                         (p.targetWeightKg?.let { " · hedef ${it.clean()} kg" } ?: ""))
+                }
+            }
+        }
+
+        item {
+            Surface(onClick = onProgram, shape = RoundedCornerShape(28.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
+                GlowCard {
+                    Text("🗓️ Haftalık program", style = MaterialTheme.typography.titleLarge, color = androidx.compose.ui.graphics.Color(0xFF0E1200))
+                    Text("Hangi gün hangi antrenman, hangi gün off day? Dokun ve düzenle.", color = androidx.compose.ui.graphics.Color(0xFF0E1200))
                 }
             }
         }
@@ -287,6 +296,20 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 Stepper(settings.restSeconds.toString(), { v ->
                     v.toNum()?.toInt()?.let { n -> if (n in 15..600) vm.updateSettings { it.copy(restSeconds = n) } }
                 }, "Dinlenme süresi (saniye)", 15.0)
+            }
+        }
+
+        item {
+            SectionCard("Bugün ekranı", icon = Icons.Rounded.Tune) {
+                HintText("Görmek istediğin kartları seç. Program ve seri kartı her zaman görünür.")
+                TODAY_CARDS.forEach { (id, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = id !in settings.hiddenCards, onCheckedChange = { on ->
+                            vm.updateSettings { it.copy(hiddenCards = if (on) it.hiddenCards - id else it.hiddenCards + id) }
+                        })
+                    }
+                }
             }
         }
 

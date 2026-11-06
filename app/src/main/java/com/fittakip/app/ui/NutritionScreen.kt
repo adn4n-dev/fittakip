@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PieChart
@@ -56,6 +57,9 @@ fun NutritionScreen(vm: AppViewModel) {
     val water by vm.water.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val customFoods by vm.customFoods.collectAsStateWithLifecycle()
+    val savedMeals by vm.savedMeals.collectAsStateWithLifecycle()
+    val weights by vm.weights.collectAsStateWithLifecycle()
+    var saveMealOf by remember { mutableStateOf<Meal?>(null) }
     val day by vm.selectedDay.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf(false) }
@@ -100,8 +104,12 @@ fun NutritionScreen(vm: AppViewModel) {
                 )
             }
         }
-        item { HeroCard(p, result, foods, settings.kcalAdjust) { editing = true } }
+        item { HeroCard(p, result, foods, settings.kcalAdjust, dayWater, waterGoal) { editing = true } }
         item { WaterCard(dayWater, waterGoal, { vm.addWater(it) }, { vm.undoWater() }) }
+        item {
+            val adaptive = remember(allFoods, weights) { Calculator.adaptiveTdee(allFoods, weights, vm.today) }
+            AdaptiveCard(adaptive, result.tdee, settings.kcalAdjust) { vm.applyAdaptiveTdee(it) }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PrimaryButton("Yemek ekle", onClick = { sheet = true }, icon = Icons.Rounded.Add)
@@ -128,6 +136,7 @@ fun NutritionScreen(vm: AppViewModel) {
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${m.emoji} ${m.label}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         HintText("${list.sumOf { it.kcal }} kcal")
+                        if (list.size >= 2) TextButton(onClick = { saveMealOf = m }) { Text("Öğünü kaydet") }
                     }
                 }
                 items(list, key = { it.id }) { f -> FoodRow(f, onClick = { editFood = f }) { vm.deleteFood(f) } }
@@ -188,12 +197,34 @@ fun NutritionScreen(vm: AppViewModel) {
         AddFoodSheet(
             history = allFoods,
             customFoods = customFoods,
+            savedMeals = savedMeals,
+            onSavedMeal = { sm, meal -> vm.addSavedMeal(sm, meal) },
+            onDeleteSavedMeal = { vm.deleteSavedMeal(it) },
             favorites = settings.favorites,
             onToggleFavorite = { vm.toggleFavorite(it) },
             onSaveCustom = { n, k, pr, cb, ft -> vm.saveCustomFood(n, k, pr, cb, ft) },
             onDeleteCustom = { vm.deleteCustomFood(it) },
             onDismiss = { sheet = false }
         ) { name, kcal, pr, cb, ft, meal -> vm.addFood(name, kcal, pr, cb, ft, meal) }
+    }
+
+    saveMealOf?.let { m ->
+        var name by remember(m) { mutableStateOf("Benim ${m.label.lowercase()}m") }
+        AlertDialog(
+            onDismissRequest = { saveMealOf = null },
+            title = { Text("Öğünü kaydet") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HintText(foods.filter { Meal.from(it.meal) == m }.joinToString(", ") { it.name })
+                    TextInput(name, { name = it }, "Öğün adı")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.saveMeal(name.trim(), foods.filter { Meal.from(it.meal) == m }); saveMealOf = null }, enabled = name.isNotBlank()) { Text("Kaydet") }
+            },
+            dismissButton = { TextButton(onClick = { saveMealOf = null }) { Text("Vazgeç") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
     }
 
     if (quick) QuickKcalDialog(onDismiss = { quick = false }) { kcal, meal ->
@@ -255,7 +286,26 @@ private fun QuickKcalDialog(onDismiss: () -> Unit, onAdd: (Int, Meal) -> Unit) {
 }
 
 @Composable
-private fun HeroCard(p: Profile, r: CalorieResult, foods: List<FoodEntry>, adjust: Int, onEdit: () -> Unit) {
+private fun AdaptiveCard(a: Calculator.AdaptiveTdee?, formulaTdee: Int, adjust: Int, onApply: (Int) -> Unit) {
+    SectionCard("Gerçek kalori ihtiyacın", icon = Icons.Rounded.Insights) {
+        if (a == null) {
+            HintText("4 hafta boyunca yemeklerini ve en az haftada 2 kez kilonu kaydedersen, formül yerine senin gerçek harcamanı hesaplarım. Genelde formülden 200-400 kcal farklı çıkar.")
+        } else {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("${a.tdee}", style = MaterialTheme.typography.headlineLarge, color = FitColors.Lime)
+                Text(" kcal/gün", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+            }
+            HintText("Son ${a.loggedDays} günde ortalama ${a.avgIntake} kcal yedin, kilon haftada ${a.kgPerWeek.signed(2)} kg değişti. Formül ${formulaTdee} kcal diyordu. Güven: ${a.confidence}.")
+            val newAdjust = a.tdee - formulaTdee
+            if (kotlin.math.abs(newAdjust - adjust) >= 50) {
+                PrimaryButton("Hedefimi buna göre ayarla", onClick = { onApply(a.tdee) })
+            } else HintText("✅ Hedefin zaten gerçek harcamana göre ayarlı.")
+        }
+    }
+}
+
+@Composable
+private fun HeroCard(p: Profile, r: CalorieResult, foods: List<FoodEntry>, adjust: Int, water: Int, waterGoal: Int, onEdit: () -> Unit) {
     val eaten = foods.sumOf { it.kcal }
     val protein = foods.sumOf { it.protein }
     val carb = foods.sumOf { it.carb }
@@ -269,15 +319,18 @@ private fun HeroCard(p: Profile, r: CalorieResult, foods: List<FoodEntry>, adjus
                 Icon(Icons.Rounded.Edit, contentDescription = "Profili düzenle", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            CalorieRing(eaten, r.target)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            val left = r.target - eaten
+            TripleRing(
+                eaten.toFloat() / r.target, (protein / r.proteinG.coerceAtLeast(1)).toFloat(), water.toFloat() / waterGoal.coerceAtLeast(1),
+                "${kotlin.math.abs(left)}", if (left >= 0) "kcal kaldı" else "kcal fazla", left < 0
+            )
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                MiniStat(Icons.Rounded.Flag, "Hedef", "${r.target} kcal", FitColors.Lime)
-                MiniStat(Icons.Rounded.Restaurant, "Yenen", "$eaten kcal", FitColors.Orange)
-                MiniStat(Icons.Rounded.LocalFireDepartment, "Günlük harcama", "${r.tdee} kcal", FitColors.Blue)
+                MiniStat(Icons.Rounded.LocalFireDepartment, "Kalori", "$eaten / ${r.target}", FitColors.Lime)
+                MiniStat(Icons.Rounded.Restaurant, "Protein", "${protein.roundToInt()} / ${r.proteinG} g", FitColors.Blue)
+                MiniStat(Icons.Rounded.WaterDrop, "Su", "${(water / 1000.0).fmt(1)} / ${(waterGoal / 1000.0).fmt(1)} L", Color(0xFF4DE1E1))
             }
         }
-        MacroBar("Protein", protein, r.proteinG, FitColors.Blue)
         MacroBar("Karbonhidrat", carb, r.carbG, FitColors.Lime)
         MacroBar("Yağ", fat, r.fatG, FitColors.Orange)
         val total = protein * 4 + carb * 4 + fat * 9
@@ -335,6 +388,9 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
 private fun AddFoodSheet(
     history: List<FoodEntry>,
     customFoods: List<CustomFood>,
+    savedMeals: List<com.fittakip.app.data.SavedMeal>,
+    onSavedMeal: (com.fittakip.app.data.SavedMeal, Meal) -> Unit,
+    onDeleteSavedMeal: (com.fittakip.app.data.SavedMeal) -> Unit,
     favorites: Set<String>,
     onToggleFavorite: (String) -> Unit,
     onSaveCustom: (String, Int, Double, Double, Double) -> Unit,
@@ -428,6 +484,18 @@ private fun AddFoodSheet(
                     )
                 }
                 if (query.isBlank()) {
+                    if (savedMeals.isNotEmpty()) {
+                        item { Text("🍱 Kayıtlı öğünlerin · tek dokunuşla hepsini ekle", style = MaterialTheme.typography.titleSmall) }
+                        items(savedMeals, key = { "sm-" + it.id }) { sm ->
+                            val arr = remember(sm.items) { org.json.JSONArray(sm.items) }
+                            val names = (0 until arr.length()).joinToString(", ") { arr.getJSONObject(it).getString("n") }
+                            val kcal = (0 until arr.length()).sumOf { arr.getJSONObject(it).getInt("k") }
+                            PickRow(sm.name, names, kcal, null, null, onLongDelete = { onDeleteSavedMeal(sm) }) {
+                                onSavedMeal(sm, meal)
+                                onDismiss()
+                            }
+                        }
+                    }
                     if (favItems.isNotEmpty()) {
                         item { Text("⭐ Favorilerin", style = MaterialTheme.typography.titleSmall) }
                         items(favItems, key = { "fav-" + it.name }) { item ->

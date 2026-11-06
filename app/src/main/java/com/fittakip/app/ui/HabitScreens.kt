@@ -34,6 +34,11 @@ fun BackHeader(title: String, onBack: () -> Unit, action: (@Composable () -> Uni
 
 private val MOODS = listOf("😫", "😕", "😐", "🙂", "😄")
 
+val CHECKIN_OPTIONS = listOf(
+    "SLEEP" to "😴 Uyku", "MOOD" to "🙂 Ruh hali", "STEPS" to "👟 Adım",
+    "CAFFEINE" to "☕ Kafein", "SUPP" to "💊 Takviye", "NOTE" to "📝 Not"
+)
+
 // ---------------- Günlük check-in ----------------
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -51,12 +56,26 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { BackHeader("Günlük check-in", onBack) }
-
         item {
+            FitCard {
+                Text("Neleri takip etmek istersin?", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CHECKIN_OPTIONS.forEach { (key, label) ->
+                        val on = key in settings.checkinItems
+                        Pill(if (on) "✓ $label" else label, if (on) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = {
+                            vm.updateSettings { st -> st.copy(checkinItems = if (on) st.checkinItems - key else st.checkinItems + key) }
+                        })
+                    }
+                }
+                HintText("Az ama düzenli kayıt, çok ama yarım kalan kayıttan iyidir. Başlangıç için sadece uykuyu öneririm.")
+            }
+        }
+
+        if ("SLEEP" in settings.checkinItems) item {
             SectionCard("Uyku", icon = Icons.Rounded.Bedtime) {
                 Stepper(value("SLEEP")?.clean() ?: "7", { v -> v.toNum()?.let { if (it in 0.0..16.0) vm.setHabit("SLEEP", it) } }, "Dün gece kaç saat uyudun?", 0.5)
                 Text("Kalitesi", style = MaterialTheme.typography.labelLarge)
@@ -74,7 +93,7 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
-        item {
+        if ("MOOD" in settings.checkinItems) item {
             SectionCard("Ruh hali ve enerji", icon = Icons.Rounded.Mood) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     MOODS.forEachIndexed { i, e ->
@@ -101,7 +120,7 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
-        item {
+        if ("STEPS" in settings.checkinItems) item {
             SectionCard("Adım", icon = Icons.Rounded.DirectionsWalk) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NumField(steps, { steps = it }, "Bugünkü adım", Modifier.weight(1f))
@@ -115,7 +134,7 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
-        item {
+        if ("CAFFEINE" in settings.checkinItems) item {
             SectionCard("Kafein", icon = Icons.Rounded.Coffee) {
                 val cups = value("CAFFEINE")?.toInt() ?: 0
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +151,7 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
-        item {
+        if ("SUPP" in settings.checkinItems) item {
             SectionCard("Takviyeler", icon = Icons.Rounded.Medication) {
                 if (settings.supplements.isEmpty()) HintText("Listende takviye yok. Aşağıdan ekleyebilirsin.")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -153,7 +172,7 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
-        item {
+        if ("NOTE" in settings.checkinItems) item {
             SectionCard("Günlük not", icon = Icons.Rounded.EditNote) {
                 TextInput(note, { note = it }, "Bugün nasıl geçti? Ne hissettin?", singleLine = false)
                 PrimaryButton("Notu kaydet", onClick = { vm.setHabit("NOTE", 1.0, note.trim()) }, enabled = note.isNotBlank() && note != noteToday)
@@ -172,7 +191,7 @@ fun StatsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val g = game ?: return
     var month by rememberSaveable { mutableStateOf(false) }
     val t = if (month) g.thisMonth else g.allTime
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { BackHeader("İstatistikler", onBack) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -223,7 +242,7 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
     val progress = remember(work) { if (work.isEmpty()) null else com.fittakip.app.domain.ProgressAnalyzer.analyzeExercise(work) }
     val prs = remember(sets, name) { Gamification.prDays(sets).filter { it.second.equals(name, true) } }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             BackHeader(name, onBack, action = {
                 IconButton(onClick = { vm.share(vm.workoutShareText(vm.today)) }) { Icon(Icons.Rounded.Share, "Paylaş") }

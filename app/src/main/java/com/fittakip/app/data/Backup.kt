@@ -64,6 +64,9 @@ object Backup {
                     .put("p", it.protein).put("c", it.carb).put("f", it.fat))
             }
         })
+        root.put("savedMeals", JSONArray().apply {
+            d.dumpSavedMeals().forEach { put(JSONObject().put("name", it.name).put("items", it.items)) }
+        })
         return root.toString(2)
     }
 
@@ -93,7 +96,7 @@ object Backup {
                 meal = it.optString("meal", "SNACK"))
         }
         val sets = root.optJSONArray("sets").mapObjects {
-            WorkoutSet(epochDay = it.getLong("day"), exercise = it.getString("ex"), weightKg = it.getDouble("kg"),
+            WorkoutSet(epochDay = it.getLong("day"), exercise = normalizeExercise(it.getString("ex")), weightKg = it.getDouble("kg"),
                 reps = it.getInt("reps"), note = it.optString("note", ""),
                 warmup = it.optBoolean("warmup", false), rpe = it.optD("rpe"))
         }
@@ -121,6 +124,8 @@ object Backup {
                 protein = it.optDouble("p", 0.0), carb = it.optDouble("c", 0.0), fat = it.optDouble("f", 0.0))
         }
 
+        val savedMeals = root.optJSONArray("savedMeals").mapObjects { SavedMeal(name = it.getString("name"), items = it.getString("items")) }
+
         db.withTransaction {
             clearAll(d)
             profiles.firstOrNull()?.let { d.saveProfile(it) }
@@ -134,12 +139,13 @@ object Backup {
             d.insertFasts(fasts)
             d.insertSessions(sessions)
             d.insertCustomFoods(customFoods)
+            d.insertSavedMeals(savedMeals)
         }
     }
 
     suspend fun clearAll(d: FitDao) {
         d.clearProfile(); d.clearFoods(); d.clearSets(); d.clearWeights()
         d.clearWater(); d.clearCardio(); d.clearMeasures()
-        d.clearHabits(); d.clearFasts(); d.clearSessions(); d.clearCustomFoods(); d.clearPhotos()
+        d.clearHabits(); d.clearFasts(); d.clearSessions(); d.clearCustomFoods(); d.clearPhotos(); d.clearSavedMeals()
     }
 }

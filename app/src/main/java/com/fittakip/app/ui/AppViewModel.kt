@@ -19,6 +19,7 @@ import com.fittakip.app.domain.Gamification
 import com.fittakip.app.domain.GameState
 import com.fittakip.app.domain.Stats
 import com.fittakip.app.notify.Reminders
+import com.fittakip.app.notify.RestAlarm
 import com.fittakip.app.widget.FitWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -44,7 +45,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = db.dao()
     private val store = SettingsStore(app)
     val settings: StateFlow<AppSettings> = store.state
-    val today: Long = LocalDate.now().toEpochDay()
+    /** Her okunuşta güncel gün: gece yarısından sonra kayıtlar doğru güne yazılır. */
+    val today: Long get() = LocalDate.now().toEpochDay()
+
+    /** Gün değişince oyun durumunu yeniden hesaplatmak için. */
+    private val dayTicker: Flow<Long> = flow {
+        while (true) {
+            emit(LocalDate.now().toEpochDay())
+            kotlinx.coroutines.delay(60_000)
+        }
+    }.distinctUntilChanged()
 
     private fun <T> Flow<T>.state(initial: T) = stateIn(viewModelScope, SharingStarted.Eagerly, initial)
 
@@ -60,10 +70,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val sessions = dao.sessions().state(emptyList())
     val customFoods = dao.customFoods().state(emptyList())
     val photos = dao.photos().state(emptyList())
+    val savedMeals = dao.savedMeals().state(emptyList())
 
-    private val _day = MutableStateFlow(today)
+    private val _day = MutableStateFlow(LocalDate.now().toEpochDay())
     val selectedDay: StateFlow<Long> = _day
     fun shiftDay(delta: Int) { _day.value = (_day.value + delta).coerceAtMost(today) }
+
+    /** Antrenman ekranında set eklenen gün (geçmişe set girmek için). */
+    private val _workoutDay = MutableStateFlow(LocalDate.now().toEpochDay())
+    val workoutDay: StateFlow<Long> = _workoutDay
+    fun shiftWorkoutDay(delta: Int) { _workoutDay.value = (_workoutDay.value + delta).coerceIn(today - 30, today) }
 
     /** Hareket detay ekranında gösterilen hareket. */
     val detailExercise = MutableStateFlow("")
@@ -78,7 +94,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }.combine(dao.photos()) { d, p -> d.copy(photos = p) }
 
     val game: StateFlow<GameState?> =
-        combine(allData, dao.profile(), settings) { d, p, st -> Gamification.compute(d, p, st, today) }
+        combine(allData, dao.profile(), settings, dayTicker) { d, p, st, day -> Gamification.compute(d, p, st, day) }
             .flowOn(Dispatchers.Default)
             .state(null)
 
@@ -89,15 +105,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _restEnd = MutableStateFlow<Long?>(null)
     val restEnd: StateFlow<Long?> = _restEnd
-    fun startRest(seconds: Int = settings.value.restSeconds) { _restEnd.value = System.currentTimeMillis() + seconds * 1000L }
-    fun addRest(seconds: Int) { _restEnd.value = (_restEnd.value ?: System.currentTimeMillis()) + seconds * 1000L }
-    fun stopRest() { _restEnd.value = null }
-    fun restFinished() { _restEnd.value = null; vibrate(600) }
+    fun startRest(seconds: Int = settings.value.restSeconds) {
+        val end = System.currentTimeMillis() + seconds * 1000L
+        _restEnd.value = end
+        RestAlarm.schedule(getApplication(), end)
+    }
+    fun addRest(seconds: Int) {
+        val end = (_restEnd.value ?: System.currentTimeMillis()) + seconds * 1000L
+        _restEnd.value = end
+        RestAlarm.schedule(getApplication(), end)
+    }
+    fun stopRest() { _restEnd.value = null; RestAlarm.cancel(getApplication()) }
+    fun restFinished() { _restEnd.value = null; RestAlarm.cancel(getApplication()); vibrate(600) }
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
+    /** Ekranın altında görünen mesaj; isteğe bağlı "Geri al" eylemiyle. */
+    data class UiMessage(val text: String, val action: String? = null, val onAction: (() -> Unit)? = null)
+
+    private val _message = MutableStateFlow<UiMessage?>(null)
+    val message: StateFlow<UiMessage?> = _message
     fun clearMessage() { _message.value = null }
-    fun toast(m: String) { _message.value = m }
+    fun toast(m: String) { _message.value = UiMessage(m) }
+    private var _msgText: String?
+        get() = _message.value?.text
+        set(v) { _message.value = v?.let { UiMessage(it) } }
 
     init {
         viewModelScope.launch {
@@ -107,7 +137,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
                 // Seri dondurma: dün boşsa ve hak varsa seriyi koru
                 val yesterday = today - 1
-                val effective = g.activeDays + st.frozen
+                val effective = g.streakDays
                 if (st.streakFreezes > 0 && yesterday !in effective && (today - 2) in effective) {
                     store.update {
                         it.copy(streakFreezes = it.streakFreezes - 1, frozenDays = it.frozenDays + yesterday.toString())
@@ -174,7 +204,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             dao.addFood(FoodEntry(epochDay = _day.value, name = name, kcal = kcal, protein = protein, carb = carb, fat = fat, meal = meal.name))
         }
 
-    fun deleteFood(entry: FoodEntry) = viewModelScope.launch { dao.deleteFood(entry) }
+    fun deleteFood(entry: FoodEntry) = viewModelScope.launch {
+        dao.deleteFood(entry)
+        _message.value = UiMessage("\"${entry.name}\" silindi", "Geri al") { viewModelScope.launch { dao.insertFood(entry) } }
+    }
+
+    // ---------- Kayıtlı öğünler ----------
+
+    fun saveMeal(name: String, items: List<FoodEntry>) = viewModelScope.launch {
+        val arr = org.json.JSONArray()
+        items.forEach {
+            arr.put(org.json.JSONObject().put("n", it.name).put("k", it.kcal).put("p", it.protein).put("c", it.carb).put("f", it.fat))
+        }
+        dao.addSavedMeal(SavedMeal(name = name, items = arr.toString()))
+        _msgText = "\"$name\" kaydedildi. Yemek eklerken tek dokunuşla ekleyebilirsin."
+    }
+
+    fun addSavedMeal(m: SavedMeal, meal: Meal) = viewModelScope.launch {
+        val arr = org.json.JSONArray(m.items)
+        val list = (0 until arr.length()).map {
+            val o = arr.getJSONObject(it)
+            FoodEntry(
+                epochDay = _day.value, name = o.getString("n"), kcal = o.getInt("k"),
+                protein = o.optDouble("p", 0.0), carb = o.optDouble("c", 0.0), fat = o.optDouble("f", 0.0), meal = meal.name
+            )
+        }
+        dao.addFoods(list)
+        _msgText = "${m.name}: ${list.size} yemek eklendi (${list.sumOf { it.kcal }} kcal)"
+    }
+
+    fun deleteSavedMeal(m: SavedMeal) = viewModelScope.launch { dao.deleteSavedMeal(m) }
 
     /** Kaydı porsiyon çarpanıyla günceller. */
     fun scaleFood(entry: FoodEntry, factor: Double) = viewModelScope.launch {
@@ -192,10 +251,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val target = _day.value
         val prev = foods.value.filter { it.epochDay == target - 1 }
         if (prev.isEmpty()) {
-            _message.value = "Önceki günde kopyalanacak yemek yok."
+            _msgText = "Önceki günde kopyalanacak yemek yok."
         } else {
             dao.addFoods(prev.map { it.copy(id = 0, epochDay = target) })
-            _message.value = "${prev.size} yemek kopyalandı."
+            _msgText = "${prev.size} yemek kopyalandı."
         }
     }
 
@@ -221,12 +280,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Antrenman ----------
 
     fun addSet(exercise: String, kg: Double, reps: Int, note: String, warmup: Boolean = false, rpe: Double? = null) = viewModelScope.launch {
-        val name = exercise.trim()
+        val name = normalizeExercise(exercise)
+        val day = _workoutDay.value
         val previous = sets.value.filter { !it.warmup && it.exercise.trim().equals(name, true) }
         val oldBest = previous.maxOfOrNull { Stats.epley1RM(it.weightKg, it.reps) } ?: 0.0
-        val hadEarlierDay = previous.any { it.epochDay < today }
+        val hadEarlierDay = previous.any { it.epochDay < day }
         val newBest = Stats.epley1RM(kg, reps)
-        dao.addSet(WorkoutSet(epochDay = today, exercise = name, weightKg = kg, reps = reps, note = note, warmup = warmup, rpe = rpe))
+        dao.addSet(WorkoutSet(epochDay = day, exercise = name, weightKg = kg, reps = reps, note = note, warmup = warmup, rpe = rpe))
+        if (day != today) { _msgText = "Set ${dayLabelShort(day)} gününe eklendi."; return@launch }
         if (!warmup && hadEarlierDay && newBest > oldBest + 1e-6) {
             celebrate(Celebration.PR(name, newBest, oldBest))
             vibrate(250)
@@ -234,7 +295,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         startRest(if (warmup) 45 else settings.value.restSeconds)
     }
 
-    fun deleteSet(set: WorkoutSet) = viewModelScope.launch { dao.deleteSet(set) }
+    fun deleteSet(set: WorkoutSet) = viewModelScope.launch {
+        dao.deleteSet(set)
+        _message.value = UiMessage("${set.exercise} ${trimNum(set.weightKg)}×${set.reps} silindi", "Geri al") { viewModelScope.launch { dao.insertSet(set) } }
+    }
+
+    fun updateSet(set: WorkoutSet) = viewModelScope.launch { dao.updateSet(set) }
+
+    private fun dayLabelShort(day: Long) = LocalDate.ofEpochDay(day).let { "${it.dayOfMonth}.${it.monthValue}" }
 
     fun addCardio(type: String, minutes: Int, kcal: Int) = viewModelScope.launch {
         dao.addCardio(CardioEntry(epochDay = today, type = type, minutes = minutes, kcal = kcal))
@@ -250,7 +318,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val end = System.currentTimeMillis()
         store.update { it.copy(sessionStart = 0) }
         val min = ((end - start) / 60_000).toInt()
-        if (min < 1) { _message.value = "Oturum 1 dakikadan kısa olduğu için kaydedilmedi."; return@launch }
+        if (min < 1) { _msgText = "Oturum 1 dakikadan kısa olduğu için kaydedilmedi."; return@launch }
         dao.addSession(WorkoutSession(epochDay = today, start = start, end = end))
         val todaySets = sets.value.filter { it.epochDay == today && !it.warmup }
         val vol = todaySets.sumOf { it.weightKg * it.reps }.roundToInt()
@@ -259,18 +327,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelSession() = store.update { it.copy(sessionStart = 0) }
 
-    fun saveTemplate(name: String, exercises: List<String>) = store.update {
+    private fun serialize(list: List<WorkoutTemplate>) =
+        list.joinToString("\n") { t -> t.name + "|" + t.items.joinToString(";") { i -> "${i.exercise}:${i.sets}x${i.reps}" } }
+
+    fun saveTemplate(name: String, items: List<PlanItem>) = store.update {
         val others = it.templates.filter { t -> !t.name.equals(name, true) }
-        val all = others + WorkoutTemplate(name.trim(), exercises)
-        it.copy(customTemplates = all.joinToString("\n") { t -> t.name + "|" + t.exercises.joinToString(";") }, activeTemplate = name.trim())
+        it.copy(customTemplates = serialize(others + WorkoutTemplate(name.trim(), items)), activeTemplate = name.trim())
     }
 
     fun deleteTemplate(name: String) = store.update {
-        val rest = it.templates.filter { t -> t.name != name }
         it.copy(
-            customTemplates = rest.joinToString("\n") { t -> t.name + "|" + t.exercises.joinToString(";") },
-            activeTemplate = if (it.activeTemplate == name) "" else it.activeTemplate
+            customTemplates = serialize(it.templates.filter { t -> t.name != name }),
+            activeTemplate = if (it.activeTemplate == name) "" else it.activeTemplate,
+            weekPlan = it.plan.joinToString(";") { d -> if (d == name) "" else d }
         )
+    }
+
+    // ---------- Haftalık program ----------
+
+    fun setPlanDay(index: Int, value: String) = store.update {
+        val p = it.plan.toMutableList()
+        p[index] = value
+        it.copy(weekPlan = p.joinToString(";"))
+    }
+
+    fun applyPreset(days: List<String>) = store.update { it.copy(weekPlan = days.joinToString(";")) }
+    fun clearPlan() = store.update { it.copy(weekPlan = "") }
+
+    /** Bugünün programını açar ve kronometreyi başlatır. */
+    fun startTodayWorkout() {
+        val tpl = settings.value.templateFor(today) ?: return
+        _workoutDay.value = today
+        store.update { it.copy(activeTemplate = tpl.name, sessionStart = if (it.sessionStart == 0L) System.currentTimeMillis() else it.sessionStart) }
+    }
+
+    /** Gerçek harcamaya göre kalori hedefini düzeltir. */
+    fun applyAdaptiveTdee(realTdee: Int) {
+        val p = profile.value.profile ?: return
+        val formula = Calculator.calculate(p).tdee
+        store.update { it.copy(kcalAdjust = realTdee - formula) }
+        _msgText = "Kalori hedefin gerçek harcamana göre güncellendi."
     }
 
     // ---------- Alışkanlıklar ----------
@@ -306,7 +402,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.updateFast(f.copy(end = end))
         val h = (end - f.start) / 3_600_000.0
         if (h >= f.goalHours) celebrate(Celebration.Custom("⏳", "Oruç tamamlandı!", "${"%.1f".format(h)} saat. Hedefin ${f.goalHours} saatti."))
-        else _message.value = "Oruç ${"%.1f".format(h)} saatte bitirildi."
+        else _msgText = "Oruç ${"%.1f".format(h)} saatte bitirildi."
     }
 
     fun deleteFast(f: FastEntry) = viewModelScope.launch { dao.deleteFast(f) }
@@ -318,7 +414,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         profile.value.profile?.let { dao.saveProfile(it.copy(weightKg = kg)) }
     }
 
-    fun deleteWeight(w: BodyWeight) = viewModelScope.launch { dao.deleteWeight(w) }
+    fun deleteWeight(w: BodyWeight) = viewModelScope.launch {
+        dao.deleteWeight(w)
+        _message.value = UiMessage("${trimNum(w.kg)} kg tartı silindi", "Geri al") { viewModelScope.launch { dao.addWeight(w) } }
+    }
     fun addMeasure(m: BodyMeasure) = viewModelScope.launch { dao.addMeasure(m.copy(epochDay = today)) }
     fun deleteMeasure(m: BodyMeasure) = viewModelScope.launch { dao.deleteMeasure(m) }
 
@@ -341,7 +440,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             dao.addPhoto(ProgressPhoto(epochDay = today, path = path))
         } catch (e: Exception) {
-            _message.value = "Fotoğraf eklenemedi: ${e.message}"
+            _msgText = "Fotoğraf eklenemedi: ${e.message}"
         }
     }
 
@@ -359,9 +458,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun exportTo(uri: Uri) = viewModelScope.launch {
         try {
             write(uri, Backup.export(db))
-            _message.value = "Yedek kaydedildi."
+            _msgText = "Yedek kaydedildi."
         } catch (e: Exception) {
-            _message.value = "Yedek kaydedilemedi: ${e.message}"
+            _msgText = "Yedek kaydedilemedi: ${e.message}"
         }
     }
 
@@ -383,9 +482,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             write(uri, "﻿" + csv)
-            _message.value = "CSV kaydedildi."
+            _msgText = "CSV kaydedildi."
         } catch (e: Exception) {
-            _message.value = "CSV kaydedilemedi: ${e.message}"
+            _msgText = "CSV kaydedilemedi: ${e.message}"
         }
     }
 
@@ -396,9 +495,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } ?: error("Dosya okunamadı.")
             Backup.import(db, json)
             store.update { it.copy(seenInit = false) }
-            _message.value = "Yedek geri yüklendi."
+            _msgText = "Yedek geri yüklendi."
         } catch (e: Exception) {
-            _message.value = "Geri yüklenemedi: ${e.message}"
+            _msgText = "Geri yüklenemedi: ${e.message}"
         }
     }
 
@@ -406,7 +505,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         photos.value.forEach { withContext(Dispatchers.IO) { File(it.path).delete() } }
         Backup.clearAll(dao)
         store.update { AppSettings(onboarded = true) }
-        _message.value = "Tüm veriler silindi."
+        _msgText = "Tüm veriler silindi."
     }
 
     // ---------- Paylaşım ----------
