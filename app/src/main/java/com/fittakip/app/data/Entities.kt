@@ -38,7 +38,9 @@ data class WorkoutSet(
     val exercise: String,
     val weightKg: Double,
     val reps: Int,
-    val note: String = ""
+    val note: String = "",
+    @ColumnInfo(defaultValue = "0") val warmup: Boolean = false,
+    val rpe: Double? = null
 )
 
 /** Vücut ağırlığı (tartı) kaydı. */
@@ -77,4 +79,55 @@ data class BodyMeasure(
     val chest: Double? = null,
     val arm: Double? = null,
     val hip: Double? = null
+)
+
+/**
+ * Genel alışkanlık kaydı. type: SLEEP (saat), SLEEP_Q (1-5), MOOD (1-5), ENERGY (1-5),
+ * STEPS, CAFFEINE (fincan), SUPP (text = takviye adı), NOTE (text = günlük not).
+ */
+@Entity(tableName = "habit")
+data class HabitLog(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val type: String,
+    val value: Double = 0.0,
+    val text: String = ""
+)
+
+/** Aralıklı oruç. end null ise oruç devam ediyor. Zamanlar epoch milisaniye. */
+@Entity(tableName = "fast")
+data class FastEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val start: Long,
+    val end: Long? = null,
+    val goalHours: Int
+)
+
+/** Kronometreyle tutulan antrenman oturumu. */
+@Entity(tableName = "session")
+data class WorkoutSession(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val start: Long,
+    val end: Long
+)
+
+/** Kullanıcının kendi kaydettiği yemekler. */
+@Entity(tableName = "custom_food")
+data class CustomFood(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val portion: String,
+    val kcal: Int,
+    val protein: Double,
+    val carb: Double,
+    val fat: Double
+)
+
+/** İlerleme fotoğrafı (uygulamanın kendi klasöründe saklanır). */
+@Entity(tableName = "photo")
+data class ProgressPhoto(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val path: String
 )

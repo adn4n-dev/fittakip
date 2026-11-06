@@ -209,3 +209,57 @@ val QUOTES = listOf(
     "Güç, tutarlılıktan doğar.",
     "Bugün de geldin. Bu zaten kazanmak."
 )
+
+// ---------------- Form ipuçları ----------------
+
+val FORM_TIPS = mapOf(
+    "Bench Press" to "Kürek kemiklerini sıkıştır, ayakları yere bas. Bar göğsün alt kısmına insin, dirsekler gövdeye ~45°.",
+    "Incline Bench Press" to "Sehpa 30-45°. Bar köprücük kemiğinin biraz altına insin, omuzları geride tut.",
+    "Dumbbell Press" to "Dambılları göğüs hizasına kontrollü indir, yukarıda birbirine çarptırma.",
+    "Squat" to "Ayaklar omuz genişliğinde, dizler parmak yönünde. Kalçayı geriye ver, sırtı nötr tut, en az paralele in.",
+    "Front Squat" to "Dirsekler yukarıda, gövde dik. Ağırlık ayağın ortasında kalsın.",
+    "Deadlift" to "Bar ayağın ortası üzerinde. Sırt düz, göğüs açık; kalça ve omuz birlikte kalksın, barı bacağa yakın tut.",
+    "Romanian Deadlift" to "Dizler hafif bükük, kalçayı geriye it. Arka bacakta gerilmeyi hissedince yukarı dön.",
+    "Overhead Press" to "Karın ve kalçayı sık, beli bükme. Bar yüzüne yakın yükselsin, yukarıda başını öne al.",
+    "Barbell Row" to "Gövde ~45°, sırt düz. Barı göbeğe çek, dirsekleri arkaya götür, savurma.",
+    "Barfiks" to "Omuzları aşağı çek, göğsü bara yaklaştır. Aşağıda kolları tam aç.",
+    "Lat Pulldown" to "Barı göğsün üstüne çek, gövdeyi hafif geriye yatır, omuzları kulaklardan uzak tut.",
+    "Leg Press" to "Belini sehpadan kaldırma, dizleri tam kilitleme.",
+    "Lateral Raise" to "Hafif ağırlık, dirsekler hafif bükük. Omuz hizasına kadar kaldır, yavaş indir.",
+    "Barbell Curl" to "Dirsekleri gövdeye sabitle, savurmadan kaldır, yavaş indir.",
+    "Triceps Pushdown" to "Dirsekler sabit, kolu tam aç, yukarıda kontrollü dön.",
+    "Hip Thrust" to "Sırt üstü bank kenarında, çene içeride. Yukarıda kalçayı 1 sn sık.",
+    "Plank" to "Baştan topuğa düz çizgi; kalçayı düşürme, karın ve kalçayı sık.",
+    "Dips" to "Omuzları aşağıda tut, dirsek 90°'ye kadar in, öne hafif eğil.",
+    "Face Pull" to "İpi yüze doğru çek, elleri kulak hizasında ayır, dirsekler yukarıda."
+)
+
+// ---------------- Renk temaları (seviye ile açılır) ----------------
+
+data class AccentTheme(val id: String, val name: String, val color: Long, val unlockLevel: Int)
+
+val ACCENTS = listOf(
+    AccentTheme("LIME", "Neon", 0xFFC6F432, 1),
+    AccentTheme("CYAN", "Okyanus", 0xFF4DE1E1, 3),
+    AccentTheme("AMBER", "Gün batımı", 0xFFFFC145, 5),
+    AccentTheme("VIOLET", "Mor ötesi", 0xFFB59CFF, 8),
+    AccentTheme("PINK", "Pembe güç", 0xFFFF7AC6, 12)
+)
+
+// ---------------- Haftalık meydan okumalar ----------------
+
+enum class ChallengeKind { WORKOUT_DAYS, VOLUME, WATER_DAYS, CARDIO, PROTEIN_DAYS, ACTIVE_DAYS, SLEEP_DAYS }
+
+data class ChallengeDef(val kind: ChallengeKind, val title: String, val target: Double, val unit: String)
+
+val CHALLENGES = listOf(
+    ChallengeDef(ChallengeKind.WORKOUT_DAYS, "Bu hafta 4 gün antrenman yap", 4.0, "gün"),
+    ChallengeDef(ChallengeKind.VOLUME, "Bu hafta 10.000 kg kaldır", 10_000.0, "kg"),
+    ChallengeDef(ChallengeKind.WATER_DAYS, "5 gün su hedefini tuttur", 5.0, "gün"),
+    ChallengeDef(ChallengeKind.CARDIO, "Bu hafta 90 dk kardiyo", 90.0, "dk"),
+    ChallengeDef(ChallengeKind.PROTEIN_DAYS, "5 gün protein hedefine ulaş", 5.0, "gün"),
+    ChallengeDef(ChallengeKind.ACTIVE_DAYS, "Haftanın 7 günü kayıt gir", 7.0, "gün"),
+    ChallengeDef(ChallengeKind.SLEEP_DAYS, "5 gece en az 7 saat uyu", 5.0, "gece")
+)
+
+val FAST_PLANS = listOf(14, 16, 18, 20)

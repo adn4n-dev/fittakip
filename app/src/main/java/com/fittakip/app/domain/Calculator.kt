@@ -1,5 +1,6 @@
 package com.fittakip.app.domain
 
+import com.fittakip.app.data.AppSettings
 import com.fittakip.app.data.Profile
 import com.fittakip.app.data.WorkoutSet
 import kotlin.math.log10
@@ -42,16 +43,17 @@ object Calculator {
         10 * kg + 6.25 * cm - 5 * age + (if (male) 5 else -161)
 
     fun calculate(
-        male: Boolean, age: Int, cm: Double, kg: Double, activity: Double, goal: Goal, adjust: Int = 0
+        male: Boolean, age: Int, cm: Double, kg: Double, activity: Double, goal: Goal, adjust: Int = 0,
+        proteinOverride: Double = 0.0, fatPct: Int = 25
     ): CalorieResult {
         val bmr = bmr(male, kg, cm, age)
         val tdee = bmr * activity
         val floor = if (male) 1500.0 else 1200.0
         val target = max(tdee + goal.kcalDelta + adjust, floor)
 
-        val proteinPerKg = if (goal == Goal.CUT) 2.2 else 1.8
+        val proteinPerKg = if (proteinOverride > 0) proteinOverride else if (goal == Goal.CUT) 2.2 else 1.8
         val protein = kg * proteinPerKg
-        val fat = target * 0.25 / 9
+        val fat = target * fatPct.coerceIn(10, 60) / 100.0 / 9
         val carb = max(0.0, (target - protein * 4 - fat * 9) / 4)
 
         return CalorieResult(
@@ -66,6 +68,57 @@ object Calculator {
 
     fun calculate(p: Profile, adjust: Int = 0): CalorieResult =
         calculate(p.male, p.age, p.heightCm, p.weightKg, p.activity, Goal.from(p.goal), adjust)
+
+    /** Ayarlardaki kalori düzeltmesi ve makro tercihleriyle. */
+    fun calculate(p: Profile, st: AppSettings): CalorieResult =
+        calculate(p.male, p.age, p.heightCm, p.weightKg, p.activity, Goal.from(p.goal), st.kcalAdjust, st.proteinPerKg, st.fatPct)
+
+    /** BMI 18,5–24,9 aralığına denk gelen kilo aralığı. */
+    fun idealWeightRange(cm: Double): Pair<Double, Double> {
+        val m2 = (cm / 100) * (cm / 100)
+        return 18.5 * m2 to 24.9 * m2
+    }
+
+    fun waistHipRatio(waist: Double?, hip: Double?): Double? =
+        if (waist != null && hip != null && hip > 0) waist / hip else null
+
+    fun whrRisk(ratio: Double, male: Boolean): String {
+        val limit = if (male) 0.90 else 0.85
+        return when {
+            ratio < limit - 0.05 -> "Düşük risk"
+            ratio < limit -> "Orta"
+            else -> "Yüksek risk"
+        }
+    }
+
+    /** DOTS skoru: farklı vücut ağırlıklarını karşılaştırılabilir kılan powerlifting puanı. */
+    fun dots(total: Double, bw: Double, male: Boolean): Double {
+        val c = if (male) doubleArrayOf(-307.75076, 24.0900756, -0.1918759221, 0.0007391293, -0.000001093)
+        else doubleArrayOf(-57.96288, 13.6175032, -0.1126655495, 0.0005158568, -0.0000010706)
+        val w = bw.coerceIn(40.0, 210.0)
+        val denom = c[0] + c[1] * w + c[2] * w * w + c[3] * w * w * w + c[4] * w * w * w * w
+        return if (denom <= 0) 0.0 else total * 500 / denom
+    }
+
+    /** Vücut ağırlığına oranla güç seviyesi (yaklaşık standartlar). */
+    fun strengthLevel(exercise: String, e1rm: Double, bw: Double, male: Boolean): Pair<String, Float>? {
+        val base = when (exercise.trim().lowercase()) {
+            "bench press" -> doubleArrayOf(0.5, 0.75, 1.0, 1.5, 2.0)
+            "squat" -> doubleArrayOf(0.75, 1.0, 1.5, 2.0, 2.5)
+            "deadlift" -> doubleArrayOf(1.0, 1.25, 1.75, 2.25, 3.0)
+            "overhead press" -> doubleArrayOf(0.35, 0.5, 0.7, 1.0, 1.3)
+            else -> return null
+        }
+        val f = if (male) 1.0 else 0.65
+        val ratio = e1rm / bw / f
+        val names = listOf("Yeni başlayan", "Acemi", "Orta", "İleri", "Elit")
+        var idx = 0
+        for (i in base.indices) if (ratio >= base[i]) idx = i
+        if (ratio < base[0]) return "Yeni başlayan" to (ratio / base[0]).toFloat().coerceIn(0f, 1f)
+        val next = base.getOrNull(idx + 1)
+        val prog = if (next == null) 1f else ((ratio - base[idx]) / (next - base[idx])).toFloat().coerceIn(0f, 1f)
+        return names[idx] to prog
+    }
 
     /** Kilo başına 35 ml, 250 ml'ye yuvarlanmış. */
     fun waterGoalMl(kg: Double): Int = ((kg * 35 / 250).roundToInt() * 250).coerceIn(1500, 5000)
@@ -109,7 +162,7 @@ object Calculator {
 
     /** Geçen seansa göre bu seans için ağırlık/tekrar önerisi (progressive overload). */
     fun suggestion(history: List<WorkoutSet>, exercise: String, today: Long): String? {
-        val past = history.filter { it.exercise.equals(exercise.trim(), true) && it.epochDay < today }
+        val past = history.filter { !it.warmup && it.exercise.equals(exercise.trim(), true) && it.epochDay < today }
         if (past.isEmpty()) return null
         val lastDay = past.maxOf { it.epochDay }
         val best = past.filter { it.epochDay == lastDay }.maxBy { Stats.epley1RM(it.weightKg, it.reps) }

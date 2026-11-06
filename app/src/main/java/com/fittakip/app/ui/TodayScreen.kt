@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Assessment
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.FormatQuote
@@ -52,6 +53,7 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
                 Box(Modifier.weight(1f)) { ScreenHeader("$greeting 👋", longDayLabel(vm.today)) }
                 IconButton(onClick = { onOpen(Sub.ACHIEVEMENTS) }) { Icon(Icons.Rounded.EmojiEvents, "Başarımlar") }
                 IconButton(onClick = { onOpen(Sub.REPORT) }) { Icon(Icons.Rounded.Assessment, "Haftalık rapor") }
+                IconButton(onClick = { onOpen(Sub.STATS) }) { Icon(Icons.Rounded.BarChart, "İstatistikler") }
                 IconButton(onClick = { onOpen(Sub.SETTINGS) }) { Icon(Icons.Rounded.Settings, "Ayarlar") }
             }
         }
@@ -60,9 +62,13 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
         item { StreakCard(g, vm.today) }
         item { LevelCard(g) { onOpen(Sub.ACHIEVEMENTS) } }
         item { QuestsCard(g) }
+        item { ChallengeCard(g) }
+        item { CheckinCard(g) { onOpen(Sub.HABITS) } }
+        item { FastingCard(vm) }
+        if (g.insights.isNotEmpty()) item { InsightsCard(g) }
         item {
             val p = state.profile
-            val target = p?.let { Calculator.calculate(it, settings.kcalAdjust).target }
+            val target = p?.let { Calculator.calculate(it, settings).target }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickTile(
                     "Kalori", if (target != null) "${(target - g.todayKcal).coerceAtLeast(0)}" else "${g.todayKcal}",
@@ -151,6 +157,7 @@ private fun StreakCard(g: GameState, today: Long) {
             Column(horizontalAlignment = Alignment.End) {
                 Text("${g.longestStreak}", style = MaterialTheme.typography.titleLarge)
                 HintText("en uzun")
+                if (g.freezes > 0) Pill("🧊 ${g.freezes}", FitColors.Blue)
             }
         }
         // Bu haftanın günleri

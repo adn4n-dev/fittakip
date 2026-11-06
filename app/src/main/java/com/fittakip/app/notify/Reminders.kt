@@ -44,6 +44,26 @@ object Reminders {
         WorkManager.getInstance(context).cancelUniqueWork(WORK)
     }
 
+    /** Her sabah 08:30'da günün sözü ve seri durumu. */
+    fun setMorning(context: Context, on: Boolean) {
+        val wm = WorkManager.getInstance(context)
+        if (!on) { wm.cancelUniqueWork("morning"); return }
+        val now = LocalDateTime.now()
+        var next = now.toLocalDate().atTime(8, 30)
+        if (!next.isAfter(now)) next = next.plusDays(1)
+        val req = PeriodicWorkRequestBuilder<MorningWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(Duration.between(now, next).toMinutes(), TimeUnit.MINUTES).build()
+        wm.enqueueUniquePeriodicWork("morning", ExistingPeriodicWorkPolicy.UPDATE, req)
+    }
+
+    /** 2 saatte bir, 09-21 arası, su hedefinin gerisindeysen hatırlatır. */
+    fun setWater(context: Context, on: Boolean) {
+        val wm = WorkManager.getInstance(context)
+        if (!on) { wm.cancelUniqueWork("water"); return }
+        val req = PeriodicWorkRequestBuilder<WaterWorker>(2, TimeUnit.HOURS).build()
+        wm.enqueueUniquePeriodicWork("water", ExistingPeriodicWorkPolicy.KEEP, req)
+    }
+
     fun createChannel(context: Context) {
         val ch = NotificationChannel(CHANNEL, "Günlük hatırlatma", NotificationManager.IMPORTANCE_DEFAULT)
         ch.description = "Serini korumak için akşam hatırlatması"
@@ -54,7 +74,7 @@ object Reminders {
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun show(context: Context, title: String, text: String) {
+    fun show(context: Context, title: String, text: String, id: Int = 1) {
         if (!canNotify(context)) return
         createChannel(context)
         val intent = PendingIntent.getActivity(
@@ -70,7 +90,7 @@ object Reminders {
             .setAutoCancel(true)
             .build()
         try {
-            NotificationManagerCompat.from(context).notify(1, n)
+            NotificationManagerCompat.from(context).notify(id, n)
         } catch (_: SecurityException) {
         }
     }
@@ -95,6 +115,39 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 "Bugün kendin için 1 dakika ayır 💪",
                 "Bir kayıt gir ve yeni bir seri başlat. Küçük adımlar büyük fark yaratır."
             )
+        }
+        return Result.success()
+    }
+}
+
+
+class MorningWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val today = LocalDate.now().toEpochDay()
+        val days = AppDatabase.get(applicationContext).dao().activeDays().toSet()
+        val streak = Gamification.currentStreak(days, today)
+        val quote = com.fittakip.app.data.QUOTES[(today % com.fittakip.app.data.QUOTES.size).toInt()]
+        Reminders.show(
+            applicationContext,
+            if (streak > 0) "Günaydın! 🔥 $streak günlük serin seni bekliyor" else "Günaydın! Bugün yeni bir başlangıç ☀️",
+            quote, 2
+        )
+        return Result.success()
+    }
+}
+
+class WaterWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val hour = LocalDateTime.now().hour
+        if (hour !in 9..21) return Result.success()
+        val dao = AppDatabase.get(applicationContext).dao()
+        val st = com.fittakip.app.data.SettingsStore(applicationContext).state.value
+        val goal = Gamification.waterGoal(dao.profileNow(), st)
+        val drank = dao.waterOn(LocalDate.now().toEpochDay())
+        // Gün içinde beklenen miktar: 09:00'da 0, 21:00'de hedefin tamamı
+        val expected = goal * (hour - 9) / 12
+        if (drank < expected - 250) {
+            Reminders.show(applicationContext, "💧 Su içme vakti", "Bugün $drank / $goal ml içtin. Bir bardak su iyi gelir.", 3)
         }
         return Result.success()
     }

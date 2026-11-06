@@ -18,6 +18,10 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Medication
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -119,7 +123,12 @@ fun WeeklyReportScreen(vm: AppViewModel, onBack: () -> Unit) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { SubHeader("Haftalık rapor", onBack) }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SubHeader("Haftalık rapor", onBack) }
+                IconButton(onClick = { vm.share(vm.weekShareText()) }) { Icon(Icons.Rounded.Share, "Paylaş") }
+            }
+        }
         item {
             FitCard {
                 HintText("${dayLabel(w.start)} – ${dayLabel(w.start + 6)} · geçen haftayla karşılaştırma")
@@ -200,6 +209,10 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importFrom(it) }
     }
+    val csvSets = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri -> uri?.let { vm.exportCsv(it, "sets") } }
+    val csvFoods = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri -> uri?.let { vm.exportCsv(it, "foods") } }
+    val game by vm.game.collectAsStateWithLifecycle()
+    val level = game?.level ?: 1
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -246,6 +259,20 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                     )
                     TextButton(onClick = { onRequestNotifications(); vm.testNotification() }) { Text("Deneme bildirimi gönder") }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sabah motivasyonu", style = MaterialTheme.typography.titleSmall)
+                        HintText("Her sabah 08:30'da günün sözü ve serin.")
+                    }
+                    Switch(checked = settings.morningOn, onCheckedChange = { vm.setMorning(it); if (it) onRequestNotifications() })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Su hatırlatması", style = MaterialTheme.typography.titleSmall)
+                        HintText("09-21 arası, hedefinin gerisindeysen 2 saatte bir.")
+                    }
+                    Switch(checked = settings.waterRemindOn, onCheckedChange = { vm.setWaterReminder(it); if (it) onRequestNotifications() })
+                }
             }
         }
 
@@ -264,11 +291,68 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
         }
 
         item {
+            SectionCard("Renk teması", icon = Icons.Rounded.Palette) {
+                HintText("Seviye atladıkça yeni renkler açılır. Şu an seviye $level.")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    com.fittakip.app.data.ACCENTS.forEach { a ->
+                        val open = level >= a.unlockLevel
+                        val c = androidx.compose.ui.graphics.Color(a.color)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                            Box(
+                                Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (open) c else c.copy(alpha = 0.25f))
+                                    .then(if (open) Modifier.clickable { vm.updateSettings { it.copy(accent = a.id) } } else Modifier),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(if (!open) "🔒" else if (settings.accent == a.id) "✓" else "", color = androidx.compose.ui.graphics.Color.Black)
+                            }
+                            Text(a.name, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+                            if (!open) HintText("Sv. ${a.unlockLevel}")
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SectionCard("Makro ayarları", icon = Icons.Rounded.Tune) {
+                Stepper(
+                    if (settings.proteinPerKg == 0.0) "0" else settings.proteinPerKg.clean(),
+                    { v -> v.toNum()?.let { n -> if (n in 0.0..4.0) vm.updateSettings { it.copy(proteinPerKg = n) } } },
+                    "Protein (g/kg, 0 = hedefe göre otomatik)", 0.1
+                )
+                Stepper(settings.fatPct.toString(), { v ->
+                    v.toNum()?.toInt()?.let { n -> if (n in 10..60) vm.updateSettings { it.copy(fatPct = n) } }
+                }, "Yağ (kalorinin yüzdesi)", 5.0)
+                HintText("Kalan kalori karbonhidrata gider. Kas yapımı için 1,6-2,2 g/kg protein önerilir.")
+            }
+        }
+
+        item {
+            SectionCard("Takviye listesi", icon = Icons.Rounded.Medication) {
+                if (settings.supplements.isEmpty()) HintText("Liste boş. Check-in ekranından ekleyebilirsin.")
+                settings.supplements.sorted().forEach { sp ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(sp, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { vm.updateSettings { it.copy(supplements = it.supplements - sp) } }) { Text("Çıkar") }
+                    }
+                }
+            }
+        }
+
+        item {
             SectionCard("Veriler", icon = Icons.Rounded.Backup) {
                 HintText("Tüm kayıtlarını tek bir dosyaya yedekle. Telefon değiştirirken ya da sıfırlamadan önce işine yarar.")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Yedekle", onClick = { exporter.launch("fittakip-yedek-${LocalDate.now()}.json") }, icon = Icons.Rounded.Backup, modifier = Modifier.weight(1f))
                     SecondaryButton("Geri yükle", onClick = { importer.launch(arrayOf("application/json", "*/*")) }, icon = Icons.Rounded.Restore, modifier = Modifier.weight(1f))
+                }
+                Text("Excel / Google Sheets için CSV", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton("Setler", onClick = { csvSets.launch("fittakip-setler-${LocalDate.now()}.csv") }, modifier = Modifier.weight(1f))
+                    SecondaryButton("Yemekler", onClick = { csvFoods.launch("fittakip-yemekler-${LocalDate.now()}.csv") }, modifier = Modifier.weight(1f))
                 }
                 TextButton(onClick = { confirmReset = true }) {
                     Icon(Icons.Rounded.DeleteForever, null, tint = MaterialTheme.colorScheme.error)
@@ -277,7 +361,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 }
             }
         }
-        item { HintText("FitTakip 2.0 · Tüm veriler sadece bu telefonda saklanır.") }
+        item { HintText("FitTakip 3.0 · Tüm veriler sadece bu telefonda saklanır. Ana ekrana FitTakip widget'ını ekleyebilir, uygulama ikonuna basılı tutarak kısayolları kullanabilirsin.") }
     }
 
     if (confirmReset) {

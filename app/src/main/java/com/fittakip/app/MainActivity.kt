@@ -37,20 +37,32 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fittakip.app.ui.*
 
 class MainActivity : ComponentActivity() {
+    private val shortcut = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        shortcut.value = intent.getStringExtra("shortcut")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        shortcut.value = intent?.getStringExtra("shortcut")
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         super.onCreate(savedInstanceState)
         setContent {
-            FitTheme { FitApp() }
+            val vm: AppViewModel = viewModel()
+            val settings by vm.settings.collectAsStateWithLifecycle()
+            FitTheme(settings.accent) {
+                FitApp(vm, shortcut.value) { shortcut.value = null }
+            }
         }
     }
 }
 
 @Composable
-fun FitApp(vm: AppViewModel = viewModel()) {
+fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val celebrations by vm.celebrations.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
@@ -62,6 +74,15 @@ fun FitApp(vm: AppViewModel = viewModel()) {
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val askNotifications = {
         if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    LaunchedEffect(shortcut) {
+        when (shortcut) {
+            "water" -> { vm.addWater(250); vm.toast("250 ml su eklendi 💧"); tab = 1; sub = null }
+            "workout" -> { tab = 2; sub = null }
+            "weight" -> { tab = 4; sub = null }
+        }
+        if (shortcut != null) onShortcutHandled()
     }
 
     LaunchedEffect(message) {
@@ -83,6 +104,7 @@ fun FitApp(vm: AppViewModel = viewModel()) {
         return
     }
 
+    val openExercise: (String) -> Unit = { name -> vm.detailExercise.value = name; sub = Sub.EXERCISE }
     BackHandler(enabled = sub != null) { sub = null }
     BackHandler(enabled = sub == null && tab != 0) { tab = 0 }
 
@@ -125,12 +147,15 @@ fun FitApp(vm: AppViewModel = viewModel()) {
                     Sub.ACHIEVEMENTS -> AchievementsScreen(vm) { sub = null }
                     Sub.REPORT -> WeeklyReportScreen(vm) { sub = null }
                     Sub.SETTINGS -> SettingsScreen(vm, onBack = { sub = null }, onRequestNotifications = askNotifications)
+                    Sub.HABITS -> HabitsScreen(vm) { sub = null }
+                    Sub.STATS -> StatsScreen(vm) { sub = null }
+                    Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
                     null -> Crossfade(targetState = tab, label = "tab") { t ->
                         when (t) {
                             0 -> TodayScreen(vm, onTab = { tab = it }, onOpen = { sub = it })
                             1 -> NutritionScreen(vm)
-                            2 -> WorkoutScreen(vm)
-                            3 -> ProgressScreen(vm)
+                            2 -> WorkoutScreen(vm, onOpenExercise = openExercise)
+                            3 -> ProgressScreen(vm, onOpenExercise = openExercise)
                             else -> BodyScreen(vm)
                         }
                     }

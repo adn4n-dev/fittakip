@@ -1,6 +1,21 @@
 package com.fittakip.app.ui
 
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.fittakip.app.data.ProgressPhoto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -121,6 +136,8 @@ fun BodyScreen(vm: AppViewModel) {
             item { CompositionCard(profile, weights.lastOrNull()?.kg ?: profile.weightKg, measures.lastOrNull()) }
         }
 
+        item { PhotosCard(vm) }
+
         // Ölçüler
         item {
             if (measureOpen) {
@@ -166,6 +183,17 @@ private fun CompositionCard(p: Profile, kg: Double, m: BodyMeasure?) {
             HintText("Yağsız kütle ≈ ${lean.fmt()} kg · yağ kütlesi ≈ ${(kg - lean).fmt()} kg")
         } else {
             HintText("Yağ oranı için bel ve boyun ölçüsü gir${if (!p.male) " (kadınlarda kalça da)" else ""}. ABD Donanması formülü kullanılır.")
+        }
+        val (lo, hi) = Calculator.idealWeightRange(p.heightCm)
+        val whr = Calculator.waistHipRatio(m?.waist, m?.hip)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricTile("Sağlıklı kilo aralığı", "${lo.fmt(0)}–${hi.fmt(0)} kg", Modifier.weight(1f))
+            MetricTile(
+                "Bel / kalça oranı",
+                if (whr != null) "${whr.fmt(2)} · ${Calculator.whrRisk(whr, p.male)}" else "Ölçü gir",
+                Modifier.weight(1f),
+                if (whr != null && Calculator.whrRisk(whr, p.male) == "Yüksek risk") FitColors.Red else MaterialTheme.colorScheme.onSurface
+            )
         }
         HintText("BMI kaslı kişilerde yanıltıcı olabilir; yağ oranı ve bel ölçüsü daha iyi gösterge.")
     }
@@ -299,5 +327,79 @@ private fun WeightRow(w: BodyWeight, delta: Double?, onDelete: () -> Unit) {
                 Icon(Icons.Rounded.DeleteOutline, contentDescription = "Sil", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+
+@Composable
+private fun PhotosCard(vm: AppViewModel) {
+    val photos by vm.photos.collectAsStateWithLifecycle()
+    var compare by remember { mutableStateOf(false) }
+    var viewing by remember { mutableStateOf<ProgressPhoto?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.addPhoto(it) } }
+    SectionCard("İlerleme fotoğrafları", icon = Icons.Rounded.PhotoCamera, action = {
+        TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Ekle") }
+    }) {
+        if (photos.isEmpty()) {
+            HintText("Ayda bir aynı ışıkta, aynı pozda fotoğraf çek. Tartıda görünmeyen değişimi fotoğraflar gösterir. Fotoğraflar sadece bu telefonda saklanır.")
+        } else {
+            if (photos.size >= 2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectCard(!compare, { compare = false }, "Galeri", Modifier.weight(1f))
+                    SelectCard(compare, { compare = true }, "Önce / sonra", Modifier.weight(1f))
+                }
+            }
+            if (compare && photos.size >= 2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(photos.first(), photos.last()).forEachIndexed { i, ph ->
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            PhotoThumb(ph, Modifier.fillMaxWidth().aspectRatio(0.75f)) { viewing = ph }
+                            HintText((if (i == 0) "Önce · " else "Sonra · ") + dayLabel(ph.epochDay, true))
+                        }
+                    }
+                }
+                val days = photos.last().epochDay - photos.first().epochDay
+                HintText("Aradaki süre: $days gün")
+            } else {
+                photos.reversed().chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { ph -> PhotoThumb(ph, Modifier.weight(1f).aspectRatio(0.75f)) { viewing = ph } }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+    viewing?.let { ph ->
+        AlertDialog(
+            onDismissRequest = { viewing = null },
+            title = { Text(dayLabel(ph.epochDay, true)) },
+            text = { PhotoThumb(ph, Modifier.fillMaxWidth().aspectRatio(0.75f), full = true) {} },
+            confirmButton = { TextButton(onClick = { viewing = null }) { Text("Kapat") } },
+            dismissButton = { TextButton(onClick = { vm.deletePhoto(ph); viewing = null }) { Text("Sil", color = MaterialTheme.colorScheme.error) } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+}
+
+@Composable
+private fun PhotoThumb(ph: ProgressPhoto, modifier: Modifier, full: Boolean = false, onClick: () -> Unit) {
+    val bmp by produceState<ImageBitmap?>(null, ph.path, full) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                val opts = BitmapFactory.Options().apply { inSampleSize = if (full) 1 else 4 }
+                BitmapFactory.decodeFile(ph.path, opts)?.asImageBitmap()
+            } catch (_: Exception) { null }
+        }
+    }
+    Box(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        bmp?.let { Image(it, contentDescription = "İlerleme fotoğrafı", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            ?: HintText("…")
     }
 }

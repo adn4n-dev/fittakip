@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="water"
+        android:enabled="true"
+        android:icon="@drawable/ic_sc_water"
+        android:shortcutShortLabel="@string/sc_water">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.fittakip.app"
+            android:targetClass="com.fittakip.app.MainActivity">
+            <extra android:name="shortcut" android:value="water" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="workout"
+        android:enabled="true"
+        android:icon="@drawable/ic_sc_workout"
+        android:shortcutShortLabel="@string/sc_workout">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.fittakip.app"
+            android:targetClass="com.fittakip.app.MainActivity">
+            <extra android:name="shortcut" android:value="workout" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="weight"
+        android:enabled="true"
+        android:icon="@drawable/ic_sc_weight"
+        android:shortcutShortLabel="@string/sc_weight">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.fittakip.app"
+            android:targetClass="com.fittakip.app.MainActivity">
+            <extra android:name="shortcut" android:value="weight" />
+        </intent>
+    </shortcut>
+</shortcuts>

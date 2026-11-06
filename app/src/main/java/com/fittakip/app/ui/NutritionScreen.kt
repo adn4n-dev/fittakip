@@ -1,12 +1,13 @@
 package com.fittakip.app.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
@@ -16,9 +17,11 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Undo
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.fittakip.app.data.CustomFood
 import com.fittakip.app.data.FOOD_DB
 import com.fittakip.app.data.FoodEntry
 import com.fittakip.app.data.FoodItem
@@ -51,9 +55,12 @@ fun NutritionScreen(vm: AppViewModel) {
     val allFoods by vm.foods.collectAsStateWithLifecycle()
     val water by vm.water.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val customFoods by vm.customFoods.collectAsStateWithLifecycle()
     val day by vm.selectedDay.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf(false) }
+    var quick by rememberSaveable { mutableStateOf(false) }
+    var editFood by remember { mutableStateOf<FoodEntry?>(null) }
 
     val foods = remember(allFoods, day) { allFoods.filter { it.epochDay == day } }
     val dayWater = remember(water, day) { water.filter { it.epochDay == day }.sumOf { it.ml } }
@@ -84,7 +91,7 @@ fun NutritionScreen(vm: AppViewModel) {
             return@LazyColumn
         }
 
-        val result = Calculator.calculate(p, settings.kcalAdjust)
+        val result = Calculator.calculate(p, settings)
         if (day != vm.today) {
             item {
                 Pill(
@@ -96,9 +103,12 @@ fun NutritionScreen(vm: AppViewModel) {
         item { HeroCard(p, result, foods, settings.kcalAdjust) { editing = true } }
         item { WaterCard(dayWater, waterGoal, { vm.addWater(it) }, { vm.undoWater() }) }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrimaryButton("Yemek ekle", onClick = { sheet = true }, icon = Icons.Rounded.Add, modifier = Modifier.weight(1f))
-                SecondaryButton("Dünü kopyala", onClick = { vm.copyPreviousDay() }, icon = Icons.Rounded.ContentCopy)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton("Yemek ekle", onClick = { sheet = true }, icon = Icons.Rounded.Add)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton("Hızlı kalori", onClick = { quick = true }, icon = Icons.Rounded.Bolt, modifier = Modifier.weight(1f))
+                    SecondaryButton("Dünü kopyala", onClick = { vm.copyPreviousDay() }, icon = Icons.Rounded.ContentCopy, modifier = Modifier.weight(1f))
+                }
             }
         }
 
@@ -120,7 +130,43 @@ fun NutritionScreen(vm: AppViewModel) {
                         HintText("${list.sumOf { it.kcal }} kcal")
                     }
                 }
-                items(list, key = { it.id }) { f -> FoodRow(f) { vm.deleteFood(f) } }
+                items(list, key = { it.id }) { f -> FoodRow(f, onClick = { editFood = f }) { vm.deleteFood(f) } }
+            }
+        }
+        if (foods.isNotEmpty()) item { HintText("Bir kayda dokunarak porsiyonunu ya da öğününü değiştirebilirsin.") }
+
+        // Öğün dağılımı
+        if (foods.size >= 2) {
+            item {
+                SectionCard("Öğün dağılımı", icon = Icons.Rounded.PieChart) {
+                    val total = foods.sumOf { it.kcal }.coerceAtLeast(1)
+                    HBars(
+                        Meal.entries.map { m -> "${m.emoji} ${m.label} · %${foods.filter { Meal.from(it.meal) == m }.sumOf { it.kcal } * 100 / total}" to foods.filter { Meal.from(it.meal) == m }.sumOf { it.kcal }.toDouble() },
+                        FitColors.Orange, "kcal"
+                    )
+                }
+            }
+        }
+
+        // Haftalık bütçe
+        item {
+            val ws = Gamification.weekStart(day)
+            val weekDays = (ws..(ws + 6)).toList()
+            val eaten = allFoods.filter { it.epochDay in ws..minOf(day, ws + 6) }.sumOf { it.kcal }
+            val budget = result.target * 7
+            val daysLeft = (ws + 6 - day).toInt() + 1
+            val remaining = budget - eaten
+            SectionCard("Haftalık kalori bütçesi", icon = Icons.Rounded.Flag) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("$eaten", style = MaterialTheme.typography.headlineMedium)
+                    Text(" / $budget kcal", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                }
+                ProgressBar(eaten.toFloat() / budget, if (eaten > budget) FitColors.Red else FitColors.Lime, 10.dp)
+                HintText(
+                    if (remaining > 0) "Haftanın kalan $daysLeft günü için günde ortalama ${remaining / daysLeft} kcal hakkın var."
+                    else "Haftalık bütçeyi ${-remaining} kcal aştın; kalan günlerde biraz hafif git."
+                )
+                HintText("Hafta: ${dayLabel(weekDays.first())} – ${dayLabel(weekDays.last())}")
             }
         }
 
@@ -139,10 +185,73 @@ fun NutritionScreen(vm: AppViewModel) {
     }
 
     if (sheet) {
-        AddFoodSheet(allFoods, onDismiss = { sheet = false }) { name, kcal, pr, cb, ft, meal ->
-            vm.addFood(name, kcal, pr, cb, ft, meal)
-        }
+        AddFoodSheet(
+            history = allFoods,
+            customFoods = customFoods,
+            favorites = settings.favorites,
+            onToggleFavorite = { vm.toggleFavorite(it) },
+            onSaveCustom = { n, k, pr, cb, ft -> vm.saveCustomFood(n, k, pr, cb, ft) },
+            onDeleteCustom = { vm.deleteCustomFood(it) },
+            onDismiss = { sheet = false }
+        ) { name, kcal, pr, cb, ft, meal -> vm.addFood(name, kcal, pr, cb, ft, meal) }
     }
+
+    if (quick) QuickKcalDialog(onDismiss = { quick = false }) { kcal, meal ->
+        vm.addFood("Hızlı ekleme", kcal, 0.0, 0.0, 0.0, meal)
+        quick = false
+    }
+
+    editFood?.let { f ->
+        AlertDialog(
+            onDismissRequest = { editFood = null },
+            title = { Text(f.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HintText("${f.kcal} kcal · P ${f.protein.roundToInt()} · K ${f.carb.roundToInt()} · Y ${f.fat.roundToInt()}")
+                    Text("Porsiyonu değiştir", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0.5, 0.75, 1.5, 2.0).forEach { x ->
+                            SelectCard(false, { vm.scaleFood(f, x); editFood = null }, "${x.clean()}×", Modifier.weight(1f))
+                        }
+                    }
+                    Text("Öğüne taşı", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Meal.entries.forEach { m ->
+                            SelectCard(Meal.from(f.meal) == m, { vm.moveFood(f, m); editFood = null }, m.emoji, Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { editFood = null }) { Text("Kapat") } },
+            dismissButton = { TextButton(onClick = { vm.deleteFood(f); editFood = null }) { Text("Sil", color = MaterialTheme.colorScheme.error) } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+}
+
+@Composable
+private fun QuickKcalDialog(onDismiss: () -> Unit, onAdd: (Int, Meal) -> Unit) {
+    var kcal by remember { mutableStateOf("") }
+    var meal by remember { mutableStateOf(Meal.forHour(LocalTime.now().hour)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Hızlı kalori") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                HintText("Ne yediğini yazmakla uğraşmak istemiyorsan sadece kaloriyi gir.")
+                NumField(kcal, { kcal = it }, "Kalori", Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Meal.entries.forEach { m -> SelectCard(meal == m, { meal = m }, m.emoji, Modifier.weight(1f)) }
+                }
+            }
+        },
+        confirmButton = {
+            val k = kcal.toNum()?.toInt()
+            TextButton(onClick = { onAdd(k!!, meal) }, enabled = k != null && k in 1..5000) { Text("Ekle") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
 }
 
 @Composable
@@ -215,7 +324,7 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
             SecondaryButton("+250 ml", onClick = { onAdd(250) }, modifier = Modifier.weight(1f))
             SecondaryButton("+500 ml", onClick = { onAdd(500) }, modifier = Modifier.weight(1f))
             IconButton(onClick = onUndo, enabled = ml > 0, modifier = Modifier.size(52.dp)) {
-                Icon(Icons.Rounded.Undo, "Geri al")
+                Icon(Icons.AutoMirrored.Rounded.Undo, "Geri al")
             }
         }
     }
@@ -225,6 +334,11 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
 @Composable
 private fun AddFoodSheet(
     history: List<FoodEntry>,
+    customFoods: List<CustomFood>,
+    favorites: Set<String>,
+    onToggleFavorite: (String) -> Unit,
+    onSaveCustom: (String, Int, Double, Double, Double) -> Unit,
+    onDeleteCustom: (CustomFood) -> Unit,
     onDismiss: () -> Unit,
     onAdd: (String, Int, Double, Double, Double, Meal) -> Unit
 ) {
@@ -234,12 +348,17 @@ private fun AddFoodSheet(
     var manual by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<FoodItem?>(null) }
     var mult by remember { mutableDoubleStateOf(1.0) }
+
+    // Kendi yemeklerin de hazır listeyle aynı biçimde aranır
+    val mine = remember(customFoods) { customFoods.map { FoodItem(it.name, it.portion, it.kcal, it.protein, it.carb, it.fat) } }
+    val all = remember(mine) { (mine + FOOD_DB).distinctBy { it.name.trLower() } }
     val frequent = remember(history) {
-        history.groupBy { it.name.trLower() }.values.sortedByDescending { it.size }.take(8).map { it.first() }
+        history.groupBy { it.name.trLower() }.values.sortedByDescending { it.size }.take(6).map { it.first() }
     }
-    val results = remember(query) {
+    val favItems = remember(favorites, all) { all.filter { it.name in favorites } }
+    val results = remember(query, all) {
         val q = query.trim().trLower()
-        if (q.isEmpty()) FOOD_DB.take(20) else FOOD_DB.filter { it.name.trLower().contains(q) }
+        if (q.isEmpty()) FOOD_DB.take(20) else all.filter { it.name.trLower().contains(q) }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
@@ -251,9 +370,7 @@ private fun AddFoodSheet(
             item { Text("Yemek ekle", style = MaterialTheme.typography.headlineMedium) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Meal.entries.forEach { m ->
-                        SelectCard(meal == m, { meal = m }, "${m.emoji}", Modifier.weight(1f), m.label)
-                    }
+                    Meal.entries.forEach { m -> SelectCard(meal == m, { meal = m }, m.emoji, Modifier.weight(1f), m.label) }
                 }
             }
             item {
@@ -266,7 +383,7 @@ private fun AddFoodSheet(
             val pk = picked
             if (manual) {
                 item {
-                    ManualFoodForm { n, k, pr, cb, ft ->
+                    ManualFoodForm(onSaveCustom) { n, k, pr, cb, ft ->
                         onAdd(n, k, pr, cb, ft, meal)
                         onDismiss()
                     }
@@ -279,6 +396,7 @@ private fun AddFoodSheet(
                                 Text(pk.name, style = MaterialTheme.typography.titleMedium)
                                 HintText("1 porsiyon = ${pk.portion}")
                             }
+                            FavStar(pk.name in favorites) { onToggleFavorite(pk.name) }
                             IconButton(onClick = { picked = null }) { Icon(Icons.Rounded.Close, "Geri") }
                         }
                         Text("Porsiyon", style = MaterialTheme.typography.labelLarge)
@@ -309,21 +427,37 @@ private fun AddFoodSheet(
                         singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()
                     )
                 }
-                if (query.isBlank() && frequent.isNotEmpty()) {
-                    item { Text("Sık yediklerin · tek dokunuşla ekle", style = MaterialTheme.typography.titleSmall) }
-                    items(frequent, key = { "f-" + it.id }) { f ->
-                        PickRow(f.name, "P ${f.protein.roundToInt()} · K ${f.carb.roundToInt()} · Y ${f.fat.roundToInt()}", f.kcal) {
-                            onAdd(f.name, f.kcal, f.protein, f.carb, f.fat, meal)
-                            onDismiss()
+                if (query.isBlank()) {
+                    if (favItems.isNotEmpty()) {
+                        item { Text("⭐ Favorilerin", style = MaterialTheme.typography.titleSmall) }
+                        items(favItems, key = { "fav-" + it.name }) { item ->
+                            PickRow(item.name, item.portion, item.kcal, true, { onToggleFavorite(item.name) }) { picked = item; mult = 1.0 }
+                        }
+                    }
+                    if (frequent.isNotEmpty()) {
+                        item { Text("Sık yediklerin · tek dokunuşla ekle", style = MaterialTheme.typography.titleSmall) }
+                        items(frequent, key = { "f-" + it.id }) { f ->
+                            PickRow(f.name, "P ${f.protein.roundToInt()} · K ${f.carb.roundToInt()} · Y ${f.fat.roundToInt()}", f.kcal, null, null) {
+                                onAdd(f.name, f.kcal, f.protein, f.carb, f.fat, meal)
+                                onDismiss()
+                            }
+                        }
+                    }
+                    if (customFoods.isNotEmpty()) {
+                        item { Text("🧑‍🍳 Kendi yemeklerin", style = MaterialTheme.typography.titleSmall) }
+                        items(customFoods, key = { "c-" + it.id }) { c ->
+                            PickRow(c.name, c.portion, c.kcal, c.name in favorites, { onToggleFavorite(c.name) }, onLongDelete = { onDeleteCustom(c) }) {
+                                picked = FoodItem(c.name, c.portion, c.kcal, c.protein, c.carb, c.fat); mult = 1.0
+                            }
                         }
                     }
                     item { Text("Hazır liste", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp)) }
                 }
                 if (results.isEmpty()) {
-                    item { HintText("\"$query\" bulunamadı. \"Elle gir\" ile kendin ekleyebilirsin.") }
+                    item { HintText("\"$query\" bulunamadı. \"Elle gir\" ile kendin ekleyip listene kaydedebilirsin.") }
                 }
                 items(results, key = { "d-" + it.name }) { item ->
-                    PickRow(item.name, item.portion, item.kcal) { picked = item; mult = 1.0 }
+                    PickRow(item.name, item.portion, item.kcal, item.name in favorites, { onToggleFavorite(item.name) }) { picked = item; mult = 1.0 }
                 }
             }
         }
@@ -331,32 +465,60 @@ private fun AddFoodSheet(
 }
 
 @Composable
-private fun PickRow(title: String, subtitle: String, kcal: Int, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick, shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+private fun FavStar(on: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            if (on) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+            if (on) "Favorilerden çıkar" else "Favorilere ekle",
+            tint = if (on) FitColors.Orange else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun PickRow(
+    title: String,
+    subtitle: String,
+    kcal: Int,
+    favorite: Boolean?,
+    onFavorite: (() -> Unit)?,
+    onLongDelete: (() -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 HintText(subtitle)
             }
             Text("$kcal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(" kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (favorite != null && onFavorite != null) FavStar(favorite, onFavorite)
+            if (onLongDelete != null) {
+                IconButton(onClick = onLongDelete) { Icon(Icons.Rounded.DeleteOutline, "Listemden sil", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
         }
     }
 }
 
 @Composable
-private fun ManualFoodForm(onAdd: (String, Int, Double, Double, Double) -> Unit) {
+private fun ManualFoodForm(onSaveCustom: (String, Int, Double, Double, Double) -> Unit, onAdd: (String, Int, Double, Double, Double) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
     var kcal by rememberSaveable { mutableStateOf("") }
     var protein by rememberSaveable { mutableStateOf("") }
     var carb by rememberSaveable { mutableStateOf("") }
     var fat by rememberSaveable { mutableStateOf("") }
+    var per100 by rememberSaveable { mutableStateOf(false) }
+    var grams by rememberSaveable { mutableStateOf("100") }
+    var save by rememberSaveable { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TextInput(name, { name = it }, "Ne yedin?")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SelectCard(!per100, { per100 = false }, "Porsiyon değeri", Modifier.weight(1f))
+            SelectCard(per100, { per100 = true }, "100 g değeri", Modifier.weight(1f), "paketin arkasından")
+        }
+        if (per100) NumField(grams, { grams = it }, "Kaç gram yedin?", Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NumField(kcal, { kcal = it }, "Kalori", Modifier.weight(1f))
             NumField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))
@@ -365,18 +527,26 @@ private fun ManualFoodForm(onAdd: (String, Int, Double, Double, Double) -> Unit)
             NumField(carb, { carb = it }, "Karb. (g)", Modifier.weight(1f))
             NumField(fat, { fat = it }, "Yağ (g)", Modifier.weight(1f))
         }
-        val p = protein.toNum() ?: 0.0
-        val c = carb.toNum() ?: 0.0
-        val f = fat.toNum() ?: 0.0
-        val k = kcal.toNum() ?: (p * 4 + c * 4 + f * 9).takeIf { it > 0 }
-        if (kcal.isBlank() && k != null) {
-            Pill("Makrolardan: ${k.roundToInt()} kcal", MaterialTheme.colorScheme.primary)
+        val factor = if (per100) (grams.toNum() ?: 0.0) / 100 else 1.0
+        val p = (protein.toNum() ?: 0.0) * factor
+        val c = (carb.toNum() ?: 0.0) * factor
+        val f = (fat.toNum() ?: 0.0) * factor
+        val k = kcal.toNum()?.let { it * factor } ?: (p * 4 + c * 4 + f * 9).takeIf { it > 0 }
+        if (k != null && (per100 || kcal.isBlank())) {
+            Pill("Toplam: ${k.roundToInt()} kcal · P ${p.roundToInt()} · K ${c.roundToInt()} · Y ${f.roundToInt()}", MaterialTheme.colorScheme.primary)
         } else if (kcal.isBlank()) {
             HintText("Kaloriyi bilmiyorsan boş bırak, protein/karb/yağdan hesaplarım.")
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = save, onCheckedChange = { save = it })
+            Text("Listeme kaydet (sonra aramada çıksın)", style = MaterialTheme.typography.bodyMedium)
+        }
         PrimaryButton(
             "Ekle",
-            onClick = { onAdd(name.trim(), k!!.roundToInt(), p, c, f) },
+            onClick = {
+                if (save) onSaveCustom(name.trim(), k!!.roundToInt(), p, c, f)
+                onAdd(name.trim(), k!!.roundToInt(), p, c, f)
+            },
             enabled = name.isNotBlank() && k != null && k >= 0,
             icon = Icons.Rounded.Add
         )
@@ -384,12 +554,8 @@ private fun ManualFoodForm(onAdd: (String, Int, Double, Double, Double) -> Unit)
 }
 
 @Composable
-private fun FoodRow(f: FoodEntry, onDelete: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+private fun FoodRow(f: FoodEntry, onClick: () -> Unit, onDelete: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically

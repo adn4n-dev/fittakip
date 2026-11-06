@@ -80,6 +80,72 @@ interface FitDao {
     @Delete
     suspend fun deleteMeasure(m: BodyMeasure)
 
+    @androidx.room.Update
+    suspend fun updateFood(entry: FoodEntry)
+
+    // Alışkanlıklar
+    @Query("SELECT * FROM habit ORDER BY epochDay ASC, id ASC")
+    fun habits(): Flow<List<HabitLog>>
+
+    @Insert
+    suspend fun addHabit(h: HabitLog)
+
+    @Query("DELETE FROM habit WHERE epochDay = :day AND type = :type")
+    suspend fun clearHabit(day: Long, type: String)
+
+    @Query("DELETE FROM habit WHERE epochDay = :day AND type = :type AND text = :text")
+    suspend fun clearHabitText(day: Long, type: String, text: String)
+
+    // Oruç
+    @Query("SELECT * FROM fast ORDER BY start DESC")
+    fun fasts(): Flow<List<FastEntry>>
+
+    @Insert
+    suspend fun addFast(f: FastEntry)
+
+    @androidx.room.Update
+    suspend fun updateFast(f: FastEntry)
+
+    @Delete
+    suspend fun deleteFast(f: FastEntry)
+
+    // Oturumlar
+    @Query("SELECT * FROM session ORDER BY start DESC")
+    fun sessions(): Flow<List<WorkoutSession>>
+
+    @Insert
+    suspend fun addSession(s: WorkoutSession)
+
+    // Kendi yemeklerim
+    @Query("SELECT * FROM custom_food ORDER BY name")
+    fun customFoods(): Flow<List<CustomFood>>
+
+    @Insert
+    suspend fun addCustomFood(f: CustomFood)
+
+    @Delete
+    suspend fun deleteCustomFood(f: CustomFood)
+
+    // Fotoğraflar
+    @Query("SELECT * FROM photo ORDER BY epochDay ASC, id ASC")
+    fun photos(): Flow<List<ProgressPhoto>>
+
+    @Insert
+    suspend fun addPhoto(p: ProgressPhoto)
+
+    @Delete
+    suspend fun deletePhoto(p: ProgressPhoto)
+
+    // Widget için
+    @Query("SELECT COALESCE(SUM(kcal), 0) FROM food WHERE epochDay = :day")
+    suspend fun kcalOn(day: Long): Int
+
+    @Query("SELECT COALESCE(SUM(ml), 0) FROM water WHERE epochDay = :day")
+    suspend fun waterOn(day: Long): Int
+
+    @Query("SELECT * FROM profile WHERE id = 1")
+    suspend fun profileNow(): Profile?
+
     // Bildirim için: kayıt girilen günler
     @Query(
         "SELECT epochDay FROM workout_set UNION SELECT epochDay FROM food UNION " +
@@ -101,6 +167,20 @@ interface FitDao {
     @Insert suspend fun insertWater(list: List<WaterLog>)
     @Insert suspend fun insertCardio(list: List<CardioEntry>)
     @Insert suspend fun insertMeasures(list: List<BodyMeasure>)
+
+    @Query("SELECT * FROM habit") suspend fun dumpHabits(): List<HabitLog>
+    @Query("SELECT * FROM fast") suspend fun dumpFasts(): List<FastEntry>
+    @Query("SELECT * FROM session") suspend fun dumpSessions(): List<WorkoutSession>
+    @Query("SELECT * FROM custom_food") suspend fun dumpCustomFoods(): List<CustomFood>
+    @Insert suspend fun insertHabits(list: List<HabitLog>)
+    @Insert suspend fun insertFasts(list: List<FastEntry>)
+    @Insert suspend fun insertSessions(list: List<WorkoutSession>)
+    @Insert suspend fun insertCustomFoods(list: List<CustomFood>)
+    @Query("DELETE FROM habit") suspend fun clearHabits()
+    @Query("DELETE FROM fast") suspend fun clearFasts()
+    @Query("DELETE FROM session") suspend fun clearSessions()
+    @Query("DELETE FROM custom_food") suspend fun clearCustomFoods()
+    @Query("DELETE FROM photo") suspend fun clearPhotos()
 
     @Query("DELETE FROM profile") suspend fun clearProfile()
     @Query("DELETE FROM food") suspend fun clearFoods()

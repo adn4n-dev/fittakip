@@ -81,7 +81,7 @@ object ProgressAnalyzer {
     const val PLATEAU_THRESHOLD_PCT = 0.5
 
     fun exercises(sets: List<WorkoutSet>): List<ExerciseProgress> =
-        sets.groupBy { it.exercise.trim().lowercase() }
+        sets.filter { !it.warmup }.groupBy { it.exercise.trim().lowercase() }
             .values
             .map { analyzeExercise(it) }
             .sortedBy { it.exercise.lowercase() }

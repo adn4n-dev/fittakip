@@ -32,11 +32,12 @@ private fun verdictColor(v: Verdict): Color = when (v) {
 }
 
 @Composable
-fun ProgressScreen(vm: AppViewModel) {
+fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     val game by vm.game.collectAsStateWithLifecycle()
     val progress = remember(sets) { ProgressAnalyzer.exercises(sets) }
     val intensity = remember(sets) { sets.groupBy { it.epochDay }.mapValues { it.value.size } }
+    val state by vm.profile.collectAsStateWithLifecycle()
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -85,7 +86,78 @@ fun ProgressScreen(vm: AppViewModel) {
                     }
                 }
             }
-            items(progress, key = { it.exercise.lowercase() }) { ExerciseCard(it) }
+            // Deload önerisi
+            val stuck = progress.count { it.verdict == Verdict.PLATEAU || it.verdict == Verdict.DECLINING }
+            if (progress.count { it.fit != null } >= 3 && stuck >= (progress.count { it.fit != null } + 1) / 2) {
+                item {
+                    SectionCard("Deload haftası zamanı olabilir 🛌") {
+                        Text("Hareketlerinin çoğu platoda ya da düşüşte ($stuck / ${progress.count { it.fit != null }}).", style = MaterialTheme.typography.bodyMedium)
+                        HintText("Bir hafta ağırlıkları %40-50 azalt, set sayısını yarıya indir. Vücut toparlanınca genelde rekorlar geri gelir.")
+                    }
+                }
+            }
+            game?.let { g ->
+                val ms = g.thisWeek.muscleSets
+                if (ms.isNotEmpty()) {
+                    item {
+                        SectionCard("Haftalık set hedefi (kas başına 10-20)") {
+                            com.fittakip.app.data.MUSCLES.forEach { m ->
+                                val n = ms[m] ?: 0
+                                val color = when { n >= 10 -> FitColors.Lime; n >= 5 -> FitColors.Orange; else -> MaterialTheme.colorScheme.onSurfaceVariant }
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row { Text(m, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f)); Text("$n set", color = color, style = MaterialTheme.typography.labelLarge) }
+                                    ProgressBar(n / 20f, color, 6.dp)
+                                }
+                            }
+                            HintText("Isınma setleri sayılmaz. 10 setin altı kas gelişimi için genelde az kalır.")
+                        }
+                    }
+                }
+            }
+            state.profile?.let { p ->
+                val best = { n: String -> progress.firstOrNull { it.exercise.equals(n, true) }?.best }
+                val lifts = listOf("Bench Press", "Squat", "Deadlift", "Overhead Press").mapNotNull { n -> best(n)?.let { n to it } }
+                if (lifts.isNotEmpty()) {
+                    item {
+                        SectionCard("Güç seviyen") {
+                            lifts.forEach { (n, b) ->
+                                com.fittakip.app.domain.Calculator.strengthLevel(n, b, p.weightKg, p.male)?.let { (lvl, f) ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row {
+                                            Text(n, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                            Text("$lvl · ${(b / p.weightKg).fmt(2)}×", style = MaterialTheme.typography.labelLarge, color = FitColors.Lime)
+                                        }
+                                        ProgressBar(f, FitColors.Lime, 6.dp)
+                                    }
+                                }
+                            }
+                            val sq = best("Squat"); val bp = best("Bench Press"); val dl = best("Deadlift")
+                            if (sq != null && bp != null && dl != null) {
+                                val total = sq + bp + dl
+                                MetricTile(
+                                    "Powerlifting toplamı · DOTS puanı",
+                                    "${total.fmt(0)} kg · ${com.fittakip.app.domain.Calculator.dots(total, p.weightKg, p.male).fmt(0)}",
+                                    Modifier.fillMaxWidth(), FitColors.Orange
+                                )
+                            } else HintText("Squat, bench ve deadlift'in üçünü de girersen DOTS puanını hesaplarım.")
+                            HintText("Vücut ağırlığına oranla yaklaşık standartlar (tahmini 1RM ile).")
+                        }
+                    }
+                }
+            }
+            item {
+                SectionCard("Kişisel rekor tablosu 🏆") {
+                    progress.sortedByDescending { it.best }.forEach { e ->
+                        Row(Modifier.fillMaxWidth().clickable { onOpenExercise(e.exercise) }, verticalAlignment = Alignment.CenterVertically) {
+                            Text(e.exercise, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Text("${e.best.fmt()} kg", style = MaterialTheme.typography.titleSmall)
+                            Text("  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    HintText("Detay, tüm seanslar ve rekor günleri için harekete dokun.")
+                }
+            }
+            items(progress, key = { it.exercise.lowercase() }) { ExerciseCard(it) { onOpenExercise(it.exercise) } }
         }
         item { HowItWorks() }
     }
@@ -102,11 +174,11 @@ private fun CountCard(label: String, count: Int, color: Color, modifier: Modifie
 }
 
 @Composable
-private fun ExerciseCard(p: ExerciseProgress) {
+private fun ExerciseCard(p: ExerciseProgress, onOpen: () -> Unit) {
     val color = verdictColor(p.verdict)
     FitCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(p.exercise, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onOpen)) {
+            Text("${p.exercise} ›", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Pill(p.verdict.short, color)
         }
         Row(verticalAlignment = Alignment.Bottom) {

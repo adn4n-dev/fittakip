@@ -5,7 +5,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DirectionsRun
@@ -34,7 +37,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WorkoutScreen(vm: AppViewModel) {
+fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     val cardio by vm.cardio.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -53,6 +56,10 @@ fun WorkoutScreen(vm: AppViewModel) {
     var tools by rememberSaveable { mutableStateOf(false) }
     var cardioOpen by rememberSaveable { mutableStateOf(false) }
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
+    var warmup by rememberSaveable { mutableStateOf(false) }
+    var rpe by rememberSaveable { mutableStateOf<Double?>(null) }
+    var newTemplate by rememberSaveable { mutableStateOf(false) }
+    var library by rememberSaveable { mutableStateOf(false) }
 
     fun pick(name: String) {
         exercise = name
@@ -63,7 +70,8 @@ fun WorkoutScreen(vm: AppViewModel) {
         }
     }
 
-    val template = TEMPLATES.firstOrNull { it.name == settings.activeTemplate }
+    val allTemplates = TEMPLATES + settings.templates
+    val template = allTemplates.firstOrNull { it.name == settings.activeTemplate }
     val doneToday = sets.filter { it.epochDay == vm.today }.map { it.exercise.trim().lowercase() }.toSet()
 
     LazyColumn(
@@ -74,10 +82,12 @@ fun WorkoutScreen(vm: AppViewModel) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { ScreenHeader("Antrenman", longDayLabel(vm.today)) }
+                IconButton(onClick = { library = true }) { Icon(Icons.AutoMirrored.Rounded.MenuBook, "Hareket kütüphanesi") }
                 IconButton(onClick = { tools = true }) { Icon(Icons.Rounded.Calculate, "Araçlar") }
             }
         }
 
+        item(key = "session") { SessionCard(settings.sessionStart, vm) }
         restEnd?.let { end -> item(key = "rest") { RestTimer(end, vm) } }
 
         // Şablon
@@ -88,7 +98,8 @@ fun WorkoutScreen(vm: AppViewModel) {
                 if (template == null) {
                     HintText("Hazır bir program seç; hareketler sırayla önüne gelsin.")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TEMPLATES.forEach { t ->
+                        Pill("+ Kendi programın", FitColors.Orange, onClick = { newTemplate = true })
+                        allTemplates.forEach { t ->
                             Pill(t.name, FitColors.Lime, onClick = {
                                 vm.updateSettings { it.copy(activeTemplate = t.name) }
                                 t.exercises.firstOrNull { it.lowercase() !in doneToday }?.let { pick(it) }
@@ -102,6 +113,9 @@ fun WorkoutScreen(vm: AppViewModel) {
                         Pill("$done / ${template.exercises.size}", if (done == template.exercises.size) FitColors.Lime else FitColors.Orange)
                     }
                     ProgressBar(done.toFloat() / template.exercises.size, FitColors.Lime)
+                    if (settings.templates.any { it.name == template.name }) {
+                        TextButton(onClick = { vm.deleteTemplate(template.name) }) { Text("Bu programı sil", color = MaterialTheme.colorScheme.error) }
+                    }
                     template.exercises.forEach { ex ->
                         val isDone = ex.lowercase() in doneToday
                         Surface(
@@ -147,7 +161,21 @@ fun WorkoutScreen(vm: AppViewModel) {
                     Stepper(kg, { kg = it }, "Ağırlık (kg)", 2.5, Modifier.weight(1f))
                     Stepper(reps, { reps = it }, "Tekrar", 1.0, Modifier.weight(1f))
                 }
-                TextInput(note, { note = it }, "Not (ops.): form, RPE, his…", singleLine = false)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = warmup, onCheckedChange = { warmup = it })
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Isınma seti", style = MaterialTheme.typography.titleSmall)
+                        HintText("Rekora ve hacme sayılmaz, dinlenme 45 sn")
+                    }
+                }
+                Text("Zorluk (RPE) · 10 = hiç tekrar kalmadı", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(6.0, 7.0, 8.0, 9.0, 10.0).forEach { r ->
+                        SelectCard(rpe == r, { rpe = if (rpe == r) null else r }, r.clean(), Modifier.weight(1f))
+                    }
+                }
+                TextInput(note, { note = it }, "Not (ops.): form, his…", singleLine = false)
 
                 val w = kg.toNum()
                 val r = reps.toNum()?.toInt()
@@ -163,8 +191,9 @@ fun WorkoutScreen(vm: AppViewModel) {
                 PrimaryButton(
                     "Seti kaydet",
                     onClick = {
-                        vm.addSet(exercise.trim(), w!!, r!!, note.trim())
+                        vm.addSet(exercise.trim(), w!!, r!!, note.trim(), warmup, rpe)
                         note = ""
+                        rpe = null
                     },
                     enabled = valid,
                     icon = Icons.Rounded.Check
@@ -203,7 +232,9 @@ fun WorkoutScreen(vm: AppViewModel) {
                     sets = sets.filter { it.epochDay == day },
                     cardio = cardio.filter { it.epochDay == day },
                     onSetClick = { toDelete = it },
-                    onCardioDelete = { vm.deleteCardio(it) }
+                    onCardioDelete = { vm.deleteCardio(it) },
+                    onShare = { vm.share(vm.workoutShareText(day)) },
+                    onExercise = onOpenExercise
                 )
             }
         }
@@ -226,6 +257,14 @@ fun WorkoutScreen(vm: AppViewModel) {
     }
 
     if (tools) ToolsSheet(initialKg = kg.toNum() ?: 60.0) { tools = false }
+    if (newTemplate) NewTemplateDialog(onDismiss = { newTemplate = false }) { n, ex ->
+        vm.saveTemplate(n, ex)
+        newTemplate = false
+    }
+    if (library) LibrarySheet(onDismiss = { library = false }, onDetail = { library = false; onOpenExercise(it) }) {
+        pick(it)
+        library = false
+    }
 }
 
 @Composable
@@ -295,10 +334,12 @@ private fun DayCard(
     sets: List<WorkoutSet>,
     cardio: List<CardioEntry>,
     onSetClick: (WorkoutSet) -> Unit,
-    onCardioDelete: (CardioEntry) -> Unit
+    onCardioDelete: (CardioEntry) -> Unit,
+    onShare: () -> Unit,
+    onExercise: (String) -> Unit
 ) {
     val byExercise = sets.groupBy { it.exercise.trim() }
-    val volume = sets.sumOf { it.weightKg * it.reps }
+    val volume = sets.filter { !it.warmup }.sumOf { it.weightKg * it.reps }
     FitCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -309,20 +350,28 @@ private fun DayCard(
                     if (cardio.isNotEmpty()) "${cardio.sumOf { it.minutes }} dk kardiyo" else null
                 ).joinToString(" · ")
             )
+            IconButton(onClick = onShare) { Icon(Icons.Rounded.Share, "Paylaş", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         byExercise.forEach { (name, list) ->
             val ordered = list.reversed()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     Text(
-                        "≈1RM ${ordered.maxOf { Stats.epley1RM(it.weightKg, it.reps) }.fmt()} kg",
+                        "$name ›", style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f).clickable { onExercise(name) }
+                    )
+                    Text(
+                        "≈1RM ${(ordered.filter { !it.warmup }.ifEmpty { ordered }).maxOf { Stats.epley1RM(it.weightKg, it.reps) }.fmt()} kg",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ordered.forEach { s ->
-                        Pill("${s.weightKg.clean()} × ${s.reps}", MaterialTheme.colorScheme.onSurface, onClick = { onSetClick(s) })
+                        Pill(
+                            (if (s.warmup) "ı " else "") + "${s.weightKg.clean()} × ${s.reps}" + (s.rpe?.let { " @${it.clean()}" } ?: ""),
+                            if (s.warmup) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            onClick = { onSetClick(s) }
+                        )
                     }
                 }
                 ordered.filter { it.note.isNotBlank() }.forEach { s -> HintText("📝 ${s.weightKg.clean()}×${s.reps}: ${s.note}") }
