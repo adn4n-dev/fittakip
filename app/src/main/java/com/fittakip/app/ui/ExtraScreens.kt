@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.AccountCircle
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
@@ -221,6 +223,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { SubHeader("Ayarlar", onBack) }
+
+        item { AccountCard(vm, settings) }
 
         item {
             if (editProfile || state.profile == null) {
@@ -448,4 +452,66 @@ fun OnboardingScreen(onStart: () -> Unit) {
         Spacer(Modifier.weight(1f))
         PrimaryButton("Başlayalım", onClick = onStart)
     }
+}
+
+
+/** Hesap: Google bağlantısı, ad, kurulumu yeniden çalıştırma. */
+@Composable
+private fun AccountCard(vm: AppViewModel, settings: com.fittakip.app.data.AppSettings) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var editName by remember { mutableStateOf(false) }
+    var name by remember(settings.userName) { mutableStateOf(settings.userName) }
+    var confirmRedo by remember { mutableStateOf(false) }
+
+    SectionCard("Hesap", icon = Icons.Rounded.AccountCircle) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(44.dp).clip(androidx.compose.foundation.shape.CircleShape).background(FitColors.Lime.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text((settings.userName.ifBlank { settings.googleFullName }.firstOrNull() ?: '?').uppercase(), color = FitColors.Lime, style = MaterialTheme.typography.titleLarge)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(settings.userName.ifBlank { "İsimsiz" }, style = MaterialTheme.typography.titleMedium)
+                HintText(if (settings.googleEmail.isNotBlank()) "Google: ${settings.googleEmail}" else "Google hesabı bağlı değil")
+            }
+            TextButton(onClick = { editName = !editName }) { Text("Ad") }
+        }
+        if (editName) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextInput(name, { name = it }, "Adın", Modifier.weight(1f))
+                TextButton(onClick = { vm.setUserName(name); editName = false }) { Text("Kaydet") }
+            }
+        }
+        if (settings.googleEmail.isBlank()) {
+            SecondaryButton(if (busy) "Bağlanıyor…" else "Google ile giriş yap", enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                busy = true; error = null
+                scope.launch {
+                    when (val r = com.fittakip.app.auth.GoogleAuth.signIn(context)) {
+                        is com.fittakip.app.auth.SignInResult.Success -> vm.linkGoogle(r.user)
+                        is com.fittakip.app.auth.SignInResult.Error -> error = r.message
+                        else -> Unit
+                    }
+                    busy = false
+                }
+            })
+        } else {
+            TextButton(onClick = { scope.launch { com.fittakip.app.auth.GoogleAuth.signOut(context); vm.unlinkGoogle() } }) {
+                Text("Google hesabının bağlantısını kaldır", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        TextButton(onClick = { confirmRedo = true }) { Text("Kurulum sihirbazını yeniden başlat") }
+    }
+    if (confirmRedo) AlertDialog(
+        onDismissRequest = { confirmRedo = false },
+        title = { Text("Kurulumu yeniden yap?") },
+        text = { Text("Bilgilerini ve programını baştan soracağım. Kayıtların (yemek, set, tartı) silinmez; haftalık programın seçtiğinle değişir.") },
+        confirmButton = { TextButton(onClick = { confirmRedo = false; vm.updateSettings { it.copy(onboarded = false) } }) { Text("Başlat") } },
+        dismissButton = { TextButton(onClick = { confirmRedo = false }) { Text("Vazgeç") } }
+    )
 }

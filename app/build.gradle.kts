@@ -15,9 +15,30 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        // Google ile giriş için Google Cloud'daki "Web application" OAuth istemci kimliği.
+        val webClientId = (project.findProperty("fittakip.googleWebClientId") as String?)
+            ?: System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$webClientId\"")
+    }
+
+    // Sabit imza: her derlemede aynı SHA-1 → Google girişi çalışır, güncellemeler üstüne kurulur.
+    val ksPath = System.getenv("FITTAKIP_KEYSTORE")
+    signingConfigs {
+        if (ksPath != null && file(ksPath).exists()) {
+            create("fixed") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("FITTAKIP_KEYSTORE_PASSWORD")
+                keyAlias = "fittakip"
+                keyPassword = System.getenv("FITTAKIP_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfigs.findByName("fixed")?.let { signingConfig = it }
+        }
         release {
             isMinifyEnabled = false
         }
@@ -31,6 +52,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
@@ -57,6 +79,11 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    // Google ile giriş (Credential Manager)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.13")

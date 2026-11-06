@@ -75,7 +75,7 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { ScreenHeader(greeting, longDayLabel(today)) }
+                Box(Modifier.weight(1f)) { ScreenHeader(if (settings.userName.isNotBlank()) "$greeting, ${settings.userName}" else greeting, longDayLabel(today)) }
                 IconButton(onClick = { onOpen(Sub.ACHIEVEMENTS) }) { Icon(Icons.Rounded.EmojiEvents, "Başarımlar") }
                 IconButton(onClick = { onOpen(Sub.SETTINGS) }) { Icon(Icons.Rounded.Settings, "Ayarlar") }
             }

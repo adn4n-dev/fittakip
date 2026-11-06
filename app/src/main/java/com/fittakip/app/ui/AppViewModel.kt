@@ -517,6 +517,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         else dao.addHabit(HabitLog(epochDay = today, type = "SUPP", value = 1.0, text = name))
     }
 
+    // ---------- Kurulum / hesap ----------
+
+    /** Kurulum sihirbazının sonunda: profil, ilk tartı, program ve salon tercihleri tek seferde kaydedilir. */
+    fun completeOnboarding(
+        name: String, google: com.fittakip.app.auth.GoogleUser?, profile: Profile,
+        plan: List<String>, rotation: Boolean, unavailable: Set<String>, daysPerWeek: Int
+    ) {
+        viewModelScope.launch {
+            dao.saveProfile(profile)
+            dao.addWeight(BodyWeight(epochDay = today, kg = profile.weightKg))
+        }
+        store.update {
+            it.copy(
+                onboarded = true, programSeeded = true,
+                userName = name.trim(),
+                googleEmail = google?.email ?: it.googleEmail,
+                googleFullName = google?.fullName ?: it.googleFullName,
+                weekPlan = plan.joinToString(";"),
+                planMode = if (rotation) "ROTATION" else "WEEKDAY",
+                rotationStart = today, weekOverrides = "",
+                unavailable = it.unavailable + unavailable,
+                weeklyWorkoutGoal = daysPerWeek.coerceIn(1, 7)
+            )
+        }
+    }
+
+    fun linkGoogle(user: com.fittakip.app.auth.GoogleUser) = store.update {
+        it.copy(googleEmail = user.email, googleFullName = user.fullName, userName = it.userName.ifBlank { user.firstName })
+    }
+
+    fun unlinkGoogle() = store.update { it.copy(googleEmail = "", googleFullName = "") }
+
+    fun setUserName(name: String) = store.update { it.copy(userName = name.trim()) }
+
     // ---------- Vücut ----------
 
     fun addWeight(kg: Double) = viewModelScope.launch {

@@ -110,8 +110,9 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
     if (!settings.onboarded) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             Box(Modifier.systemBarsPadding()) {
-                OnboardingScreen {
-                    vm.updateSettings { it.copy(onboarded = true) }
+                OnboardingFlow(vm) { openProgram ->
+                    tab = 0
+                    sub = if (openProgram) Sub.PROGRAM else null
                     askNotifications()
                 }
             }

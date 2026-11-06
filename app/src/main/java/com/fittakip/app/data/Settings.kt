@@ -40,7 +40,10 @@ data class AppSettings(
     val machineNotes: String = "{}",                 // {"Leg Press": "koltuk 4, ayak üstte"}
     val autoBackupUri: String = "",                  // kullanıcının seçtiği klasör
     val lastAutoBackup: Long = 0,
-    val weekOverrides: String = ""                   // "20400=Upper A;20401=OFF" — sadece içinde bulunulan hafta
+    val weekOverrides: String = "",                  // "20400=Upper A;20401=OFF" — sadece içinde bulunulan hafta
+    val userName: String = "",
+    val googleEmail: String = "",                    // boş = Google ile giriş yapılmadı
+    val googleFullName: String = ""
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -155,7 +158,10 @@ class SettingsStore(context: Context) {
         machineNotes = prefs.getString("machineNotes", "{}") ?: "{}",
         autoBackupUri = prefs.getString("autoBackupUri", "") ?: "",
         lastAutoBackup = prefs.getLong("lastAutoBackup", 0),
-        weekOverrides = prefs.getString("weekOverrides", "") ?: ""
+        weekOverrides = prefs.getString("weekOverrides", "") ?: "",
+        userName = prefs.getString("userName", "") ?: "",
+        googleEmail = prefs.getString("googleEmail", "") ?: "",
+        googleFullName = prefs.getString("googleFullName", "") ?: ""
     )
 
     @Synchronized
@@ -198,6 +204,9 @@ class SettingsStore(context: Context) {
             .putString("autoBackupUri", s.autoBackupUri)
             .putLong("lastAutoBackup", s.lastAutoBackup)
             .putString("weekOverrides", s.weekOverrides)
+            .putString("userName", s.userName)
+            .putString("googleEmail", s.googleEmail)
+            .putString("googleFullName", s.googleFullName)
             .apply()
         _state.value = s
     }
