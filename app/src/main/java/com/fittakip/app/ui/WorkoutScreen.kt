@@ -389,7 +389,8 @@ private fun DayCard(
                         modifier = Modifier.weight(1f).clickable { onExercise(name) }
                     )
                     Text(
-                        "≈1RM ${(ordered.filter { !it.warmup }.ifEmpty { ordered }).maxOf { Stats.epley1RM(it.weightKg, it.reps) }.fmt()} kg",
+                        if (Stats.isTimed(name) || ordered.all { it.weightKg == 0.0 }) "en iyi ${ordered.maxOf { it.reps }} ${if (Stats.isTimed(name)) "sn" else "tekrar"}"
+                        else "≈1RM ${(ordered.filter { !it.warmup }.ifEmpty { ordered }).maxOf { Stats.epley1RM(it.weightKg, it.reps) }.fmt()} kg",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary
                     )
                 }

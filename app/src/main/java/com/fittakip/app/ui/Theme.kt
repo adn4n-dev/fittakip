@@ -66,5 +66,11 @@ fun FitTheme(accentId: String = "LIME", content: @Composable () -> Unit) {
         outlineVariant = FitColors.Line,
         error = FitColors.Red
     )
-    MaterialTheme(colorScheme = scheme, typography = typography, content = content)
+    MaterialTheme(colorScheme = scheme, typography = typography) {
+        // Şeffaf zeminlerde de yazılar açık renk kalsın
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides FitColors.Text,
+            content = content
+        )
+    }
 }

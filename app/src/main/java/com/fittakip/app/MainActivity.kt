@@ -134,6 +134,7 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
     GlowBackground {
         Scaffold(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            contentColor = FitColors.Text,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 if (sub == null) FloatingNav(tabs, tab) { i ->

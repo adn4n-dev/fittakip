@@ -7,14 +7,32 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
+import kotlinx.coroutines.launch
 import com.fittakip.app.MainActivity
 import com.fittakip.app.R
 
 /** Ana ekran widget'ı: seri, kalan kalori ve su. Değerleri uygulama her güncellemede kaydeder. */
 class FitWidget : AppWidgetProvider() {
 
+    /** Uygulama kapalıyken de (ör. sabah) veritabanından taze değerleri hesaplar. */
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        ids.forEach { manager.updateAppWidget(it, views(context)) }
+        val pending = goAsync()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val dao = com.fittakip.app.data.AppDatabase.get(context).dao()
+                val st = com.fittakip.app.data.SettingsStore(context).state.value
+                val today = java.time.LocalDate.now().toEpochDay()
+                val days = dao.streakDays().toSet() + st.frozen
+                val streak = com.fittakip.app.domain.Gamification.currentStreak(days, today)
+                val p = dao.profileNow()
+                val left = p?.let { com.fittakip.app.domain.Calculator.calculate(it, st).target - dao.kcalOn(today) }
+                save(context, streak, left, dao.waterOn(today), com.fittakip.app.domain.Gamification.waterGoal(p, st))
+            } catch (_: Exception) {
+                ids.forEach { manager.updateAppWidget(it, views(context)) }
+            } finally {
+                pending.finish()
+            }
+        }
     }
 
     companion object {

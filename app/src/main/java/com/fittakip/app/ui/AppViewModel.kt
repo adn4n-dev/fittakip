@@ -130,6 +130,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         set(v) { _message.value = v?.let { UiMessage(it) } }
 
     init {
+        // Gün değişince, "bugün"e bakan ekranlar yeni güne geçsin (geçmiş güne bakılıyorsa dokunma)
+        viewModelScope.launch {
+            var last = LocalDate.now().toEpochDay()
+            dayTicker.collect { d ->
+                if (d != last) {
+                    if (_day.value == last) _day.value = d
+                    if (_workoutDay.value == last) _workoutDay.value = d
+                    last = d
+                }
+            }
+        }
         viewModelScope.launch {
             game.filterNotNull().collect { g ->
                 val st = settings.value
@@ -282,13 +293,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun addSet(exercise: String, kg: Double, reps: Int, note: String, warmup: Boolean = false, rpe: Double? = null) = viewModelScope.launch {
         val name = normalizeExercise(exercise)
         val day = _workoutDay.value
+        val bw = profile.value.profile?.weightKg ?: 0.0
         val previous = sets.value.filter { !it.warmup && it.exercise.trim().equals(name, true) }
-        val oldBest = previous.maxOfOrNull { Stats.epley1RM(it.weightKg, it.reps) } ?: 0.0
+        val oldBest = previous.maxOfOrNull { Stats.e1rm(it, bw) } ?: 0.0
         val hadEarlierDay = previous.any { it.epochDay < day }
-        val newBest = Stats.epley1RM(kg, reps)
+        val newBest = Stats.epley1RM(Stats.load(name, kg, bw), reps)
         dao.addSet(WorkoutSet(epochDay = day, exercise = name, weightKg = kg, reps = reps, note = note, warmup = warmup, rpe = rpe))
         if (day != today) { _msgText = "Set ${dayLabelShort(day)} gününe eklendi."; return@launch }
-        if (!warmup && hadEarlierDay && newBest > oldBest + 1e-6) {
+        if (!warmup && !Stats.isTimed(name) && hadEarlierDay && newBest > oldBest + 1e-6) {
             celebrate(Celebration.PR(name, newBest, oldBest))
             vibrate(250)
         }

@@ -158,12 +158,12 @@ object Gamification {
     // ---------- Rekorlar ----------
 
     /** Bir hareketin günlük en iyi 1RM'i önceki tüm günlerden yüksekse = rekor. */
-    fun prDays(sets: List<WorkoutSet>): List<Pair<Long, String>> {
+    fun prDays(sets: List<WorkoutSet>, bw: Double = 0.0): List<Pair<Long, String>> {
         val result = mutableListOf<Pair<Long, String>>()
-        sets.filter { !it.warmup }.groupBy { it.exercise.trim().lowercase() }.values.forEach { list ->
+        sets.filter { !it.warmup && !Stats.isTimed(it.exercise) }.groupBy { it.exercise.trim().lowercase() }.values.forEach { list ->
             var best = 0.0
             list.groupBy { it.epochDay }.toSortedMap().forEach { (day, ds) ->
-                val dayBest = ds.maxOf { Stats.epley1RM(it.weightKg, it.reps) }
+                val dayBest = ds.maxOf { Stats.e1rm(it, bw) }
                 if (best > 0 && dayBest > best + 1e-6) result += day to list.first().exercise.trim()
                 if (dayBest > best) best = dayBest
             }
@@ -348,7 +348,8 @@ object Gamification {
         val days = streakDays(d) + st.frozen
         val streak = currentStreak(days, today)
         val longest = maxOf(longestStreak(days), streak)
-        val prs = prDays(d.sets)
+        val bwNow = d.weights.maxByOrNull { it.epochDay }?.kg ?: p?.weightKg ?: 0.0
+        val prs = prDays(d.sets, bwNow)
         val workoutDays = d.sets.map { it.epochDay }.toSet()
         val waterGoal = waterGoal(p, st)
         val calc = p?.let { Calculator.calculate(it, st) }

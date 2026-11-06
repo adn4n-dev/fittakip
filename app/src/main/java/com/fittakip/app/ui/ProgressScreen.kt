@@ -35,7 +35,8 @@ private fun verdictColor(v: Verdict): Color = when (v) {
 fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     val game by vm.game.collectAsStateWithLifecycle()
-    val progress = remember(sets) { ProgressAnalyzer.exercises(sets) }
+    val bwNow = vm.profile.collectAsStateWithLifecycle().value.profile?.weightKg ?: 0.0
+    val progress = remember(sets, bwNow) { ProgressAnalyzer.exercises(sets, bwNow) }
     val intensity = remember(sets) { sets.groupBy { it.epochDay }.mapValues { it.value.size } }
     val state by vm.profile.collectAsStateWithLifecycle()
 

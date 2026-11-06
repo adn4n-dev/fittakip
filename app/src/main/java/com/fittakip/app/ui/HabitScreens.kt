@@ -239,8 +239,9 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
     val state by vm.profile.collectAsStateWithLifecycle()
     val list = remember(sets, name) { sets.filter { it.exercise.trim().equals(name, true) } }
     val work = list.filter { !it.warmup }
-    val progress = remember(work) { if (work.isEmpty()) null else com.fittakip.app.domain.ProgressAnalyzer.analyzeExercise(work) }
-    val prs = remember(sets, name) { Gamification.prDays(sets).filter { it.second.equals(name, true) } }
+    val bw = state.profile?.weightKg ?: 0.0
+    val progress = remember(work, bw) { if (work.isEmpty()) null else com.fittakip.app.domain.ProgressAnalyzer.analyzeExercise(work, bw) }
+    val prs = remember(sets, name, bw) { Gamification.prDays(sets, bw).filter { it.second.equals(name, true) } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {

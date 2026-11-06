@@ -36,6 +36,19 @@ object Stats {
     /** Epley formülü ile tahmini 1 tekrar maksimum. */
     fun epley1RM(kg: Double, reps: Int): Double =
         if (reps <= 1) kg else kg * (1 + reps / 30.0)
+
+    /** Vücut ağırlığıyla yapılan hareketler: yük = vücut ağırlığı + eklenen ağırlık. */
+    val BODYWEIGHT = setOf("pull-up", "push-up", "dips", "hanging leg raise", "barfiks", "şınav")
+
+    /** Süreyle ölçülen hareketler (1RM anlamsız). */
+    val TIMED = setOf("plank")
+
+    fun isTimed(exercise: String) = exercise.trim().lowercase() in TIMED
+
+    fun load(exercise: String, kg: Double, bw: Double): Double =
+        if (exercise.trim().lowercase() in BODYWEIGHT) kg + bw else kg
+
+    fun e1rm(s: WorkoutSet, bw: Double): Double = epley1RM(load(s.exercise, s.weightKg, bw), s.reps)
 }
 
 enum class Verdict(val label: String, val short: String) {
@@ -80,16 +93,17 @@ object ProgressAnalyzer {
     /** Haftalık % değişim eşiği: üstü gelişim, altı düşüş, arası plato. */
     const val PLATEAU_THRESHOLD_PCT = 0.5
 
-    fun exercises(sets: List<WorkoutSet>): List<ExerciseProgress> =
-        sets.filter { !it.warmup }.groupBy { it.exercise.trim().lowercase() }
+    fun exercises(sets: List<WorkoutSet>, bw: Double = 0.0): List<ExerciseProgress> =
+        sets.filter { !it.warmup && !Stats.isTimed(it.exercise) }.groupBy { it.exercise.trim().lowercase() }
             .values
-            .map { analyzeExercise(it) }
+            .map { analyzeExercise(it, bw) }
+            .filter { it.best > 0 }
             .sortedBy { it.exercise.lowercase() }
 
-    fun analyzeExercise(sets: List<WorkoutSet>): ExerciseProgress {
+    fun analyzeExercise(sets: List<WorkoutSet>, bw: Double = 0.0): ExerciseProgress {
         val name = sets.first().exercise.trim()
         val history = sets.groupBy { it.epochDay }
-            .map { (day, daySets) -> day to daySets.maxOf { Stats.epley1RM(it.weightKg, it.reps) } }
+            .map { (day, daySets) -> day to daySets.maxOf { Stats.e1rm(it, bw) } }
             .sortedBy { it.first }
         val best = history.maxOf { it.second }
         val lastDay = history.last().first
@@ -107,6 +121,7 @@ object ProgressAnalyzer {
         ) ?: return empty
 
         val mean = recent.map { it.second }.average()
+        if (mean <= 0.0) return empty
         val weeklyPct = fit.slope * 7 / mean * 100
         val projected = fit.at((lastDay - x0 + 28).toDouble())
 
