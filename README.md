@@ -11,14 +11,17 @@ Kotlin + Jetpack Compose (Material 3) + Room. Tüm veriler telefonda, internet g
 
 Gereksinim: Android Studio Ladybug (2024.2) veya daha yeni, JDK 17. Telefon Android 8.0+.
 
-## Sekmeler
+## Sekmeler (2.0)
 
 | Sekme | Ne yapıyor |
 |---|---|
-| **Kalori** | Profil (cinsiyet, yaş, boy, kilo, aktivite, hedef) → BMR, TDEE, günlük kalori hedefi ve makrolar. Gün içinde yediklerini ekle; kalan kalori ve makro çubukları. Kalori boş bırakılırsa protein/karb/yağdan hesaplanır. |
-| **Antrenman** | Hareket + kg + tekrar + not. Önceki hareketler öneri olarak çıkar; hareket ve kg kayıttan sonra kalır, setleri hızlı girersin. Güne göre gruplu geçmiş. |
-| **Gelişim** | Her hareket için: en iyi tahmini 1RM, haftalık % değişim, 4 hafta sonrası tahmini, güvenilirlik ve grafik. Sonuç: *Gelişiyorsun / Plato / Düşüş*. |
-| **Kilo** | Günlük tartı, yumuşatılmış "trend kilo", haftalık değişim, hedefe göre yorum ve hedef kiloya tahmini varış tarihi. Tartı girince profildeki kilo ve kalori hedefi de güncellenir. |
+| **Bugün** | Günlük seri ve haftanın günleri, seviye ve XP, 4 günlük görev, hızlı özet, haftalık antrenman hedefi, son rozetler, günün sözü. Üstten başarımlar, haftalık rapor ve ayarlar. |
+| **Beslenme** | Kalori halkası ve makrolar, su takibi, 80+ hazır Türk yemeği ile arama, porsiyon çarpanı, öğünler, sık yenenler, dünü kopyala, geçmiş günler, son 7 gün grafiği. |
+| **Antrenman** | Hazır programlar (Push/Pull/Legs…), 38 hareketlik kütüphane, son değerlerle otomatik doldurma, ağırlık önerisi, dinlenme sayacı, rekor uyarısı ve kutlaması, kardiyo, plaka hesaplayıcı, 1RM yüzde tablosu. |
+| **Gelişim** | Antrenman takvimi (ısı haritası), kas gruplarına haftalık hacim, toplam rekor ve tonaj, hareket bazında gelişim tahmini. |
+| **Vücut** | Trend kilo, hedefe ilerleme ve varış tarihi, tek dokunuşla kalori ayarı, BMI, vücut yağ oranı, mezura ölçüleri. |
+
+Bildirim: o gün kayıt yoksa akşam seri hatırlatması. Ayarlar: hedefler, dinlenme süresi, JSON yedekleme ve geri yükleme.
 
 ## Tahmin nasıl çalışıyor?
 
