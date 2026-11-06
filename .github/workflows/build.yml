@@ -34,6 +34,12 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
+      - name: İmzayı göster
+        run: |
+          if [ -n "$FITTAKIP_KEYSTORE" ]; then echo "Sabit anahtar: VAR"; else echo "Sabit anahtar: YOK (secret eklenmemiş)"; fi
+          AS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)apksigner
+          $AS verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -i "SHA-1"
+
       - name: APK'yı yükle
         uses: actions/upload-artifact@v4
         with:
