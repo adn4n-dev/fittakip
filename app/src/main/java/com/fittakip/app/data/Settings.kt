@@ -31,7 +31,8 @@ data class AppSettings(
     val lastQuestCelebration: Long = 0,
     val weekPlan: String = "",                       // "Push;OFF;Pull;..." (Pazartesi'den Pazar'a)
     val hiddenCards: Set<String> = setOf("FASTING", "QUOTE", "BADGES"),
-    val checkinItems: Set<String> = setOf("SLEEP")
+    val checkinItems: Set<String> = setOf("SLEEP"),
+    val programSeeded: Boolean = false
 ) {
     /** 0 = Pazartesi … 6 = Pazar; boş = plan yok. */
     val plan: List<String> get() = weekPlan.split(";").let { l -> List(7) { i -> l.getOrNull(i)?.trim() ?: "" } }
@@ -44,9 +45,15 @@ data class AppSettings(
         get() = customTemplates.lines().mapNotNull { line ->
             val name = line.substringBefore("|").trim()
             val items = line.substringAfter("|", "").split(";").map { it.trim() }.filter { it.isNotEmpty() }.map { part ->
-                val ex = normalizeExercise(part.substringBefore(":"))
-                val scheme = part.substringAfter(":", "3x10").lowercase().split("x")
-                PlanItem(ex, scheme.getOrNull(0)?.toIntOrNull() ?: 3, scheme.getOrNull(1)?.toIntOrNull() ?: 10)
+                val f = part.split(":")
+                val ex = normalizeExercise(f[0])
+                val scheme = f.getOrElse(1) { "3x10" }.lowercase().split("x")
+                val reps = scheme.getOrElse(1) { "10" }.split("-")
+                val r = reps.getOrNull(0)?.toIntOrNull() ?: 10
+                PlanItem(
+                    ex, scheme.getOrNull(0)?.toIntOrNull() ?: 3, r, reps.getOrNull(1)?.toIntOrNull() ?: r,
+                    f.getOrNull(2)?.removePrefix("s")?.toIntOrNull() ?: 0, f.getOrNull(3) ?: ""
+                )
             }
             if (name.isEmpty() || items.isEmpty()) null else WorkoutTemplate(name, items)
         }
@@ -94,7 +101,8 @@ class SettingsStore(context: Context) {
         lastQuestCelebration = prefs.getLong("lastQuestCelebration", 0),
         weekPlan = prefs.getString("weekPlan", "") ?: "",
         hiddenCards = set("hiddenCards", setOf("FASTING", "QUOTE", "BADGES")),
-        checkinItems = set("checkinItems", setOf("SLEEP"))
+        checkinItems = set("checkinItems", setOf("SLEEP")),
+        programSeeded = prefs.getBoolean("programSeeded", false)
     )
 
     @Synchronized
@@ -128,6 +136,7 @@ class SettingsStore(context: Context) {
             .putString("weekPlan", s.weekPlan)
             .putStringSet("hiddenCards", HashSet(s.hiddenCards))
             .putStringSet("checkinItems", HashSet(s.checkinItems))
+            .putBoolean("programSeeded", s.programSeeded)
             .apply()
         _state.value = s
     }

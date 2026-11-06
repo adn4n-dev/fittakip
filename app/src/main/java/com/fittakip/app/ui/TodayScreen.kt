@@ -161,8 +161,14 @@ private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onSta
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(if (done >= item.sets) "✅" else "◻️", fontSize = 16.sp)
                         Spacer(Modifier.width(8.dp))
-                        Text(item.exercise, color = dark, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                        Text("${done.coerceAtMost(item.sets)}/${item.sets} × ${item.reps}", color = dark, style = MaterialTheme.typography.labelLarge)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                (if (item.superset > 0) "S${item.superset} · " else "") + item.exercise,
+                                color = dark, style = MaterialTheme.typography.titleSmall
+                            )
+                            if (item.note.isNotBlank()) Text(item.note, color = darkMuted, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Text("${done.coerceAtMost(item.sets)}/${item.sets} × ${item.repsLabel}", color = dark, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }

@@ -190,6 +190,26 @@ object Calculator {
     }
 
     /** Geçen seansa göre bu seans için ağırlık/tekrar önerisi (progressive overload). */
+    /**
+     * Çift ilerleme (double progression): hedef aralığın üst sınırına tüm setlerde ulaştıysan ağırlık artır,
+     * ulaşmadıysan aynı ağırlıkla tekrar artırmaya devam et.
+     */
+    fun rangeSuggestion(history: List<WorkoutSet>, item: com.fittakip.app.data.PlanItem, today: Long): String? {
+        val past = history.filter { !it.warmup && it.exercise.equals(item.exercise, true) && it.epochDay < today }
+        if (past.isEmpty()) return "İlk sefer: ${item.label} hedefle, son tekrarlar zorlasın ama form bozulmasın."
+        val lastDay = past.maxOf { it.epochDay }
+        val last = past.filter { it.epochDay == lastDay }
+        val w = last.maxOf { it.weightKg }
+        val atW = last.filter { it.weightKg == w }
+        val allTop = atW.size >= item.sets && atW.all { it.reps >= item.repsMax }
+        val step = if (w >= 40) 2.5 else 1.25
+        return when {
+            allTop -> "Geçen sefer ${fmtKg(w)} kg ile tüm setlerde ${item.repsMax} tekrar yaptın 🎯 Bu sefer ${fmtKg(w + step)} kg'a çık, ${item.reps} tekrardan başla."
+            atW.any { it.reps < item.reps } -> "Geçen sefer ${fmtKg(w)} kg'da ${item.reps} tekrarın altına düştün. Aynı ağırlıkta kal, aralığın içine gir."
+            else -> "Geçen sefer ${fmtKg(w)} kg: ${atW.joinToString("/") { it.reps.toString() }}. Aynı ağırlıkla her sette 1 tekrar daha dene (hedef ${item.repsMax})."
+        }
+    }
+
     fun suggestion(history: List<WorkoutSet>, exercise: String, today: Long): String? {
         val past = history.filter { !it.warmup && it.exercise.equals(exercise.trim(), true) && it.epochDay < today }
         if (past.isEmpty()) return null

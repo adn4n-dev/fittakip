@@ -152,7 +152,14 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(ex, style = MaterialTheme.typography.titleSmall)
-                                        HintText("${muscleOf(ex)} · hedef ${item.sets} set × ${item.reps} tekrar")
+                                        HintText(
+                                            "${muscleOf(ex)} · hedef ${item.label}" +
+                                                (if (item.note.isNotBlank()) " · ${item.note}" else "")
+                                        )
+                                        if (item.superset > 0) {
+                                            val partner = template.items.firstOrNull { it.superset == item.superset && it.exercise != ex }
+                                            if (partner != null) Text("⚡ Süperset S${item.superset} · ${partner.exercise} ile", style = MaterialTheme.typography.labelSmall, color = FitColors.Orange)
+                                        }
                                     }
                                     Text("${n.coerceAtMost(item.sets)}/${item.sets}", style = MaterialTheme.typography.titleMedium, color = if (isDone) FitColors.Lime else MaterialTheme.colorScheme.onSurface)
                                 }
@@ -177,8 +184,9 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         suggestions.forEach { s -> Pill(s, MaterialTheme.colorScheme.tertiary, onClick = { pick(s) }) }
                     }
                 }
+                val planItem = template?.items?.firstOrNull { it.exercise.equals(q, true) }
                 if (q.isNotEmpty()) {
-                    Calculator.suggestion(sets, q, vm.today)?.let { tip ->
+                    (if (planItem != null) Calculator.rangeSuggestion(sets, planItem, wDay) else Calculator.suggestion(sets, q, vm.today))?.let { tip ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconBadge(Icons.Rounded.Lightbulb, FitColors.Orange, 30.dp)
                             Spacer(Modifier.width(10.dp))
@@ -194,7 +202,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     )
                 }
                 template?.items?.firstOrNull { it.exercise.equals(exercise.trim(), true) }?.let { item ->
-                    HintText("Hedef: ${item.sets} set × ${item.reps} tekrar · yapılan ${doneSets(item.exercise)} set")
+                    HintText("Hedef: ${item.label} · yapılan ${doneSets(item.exercise)}/${item.sets} set" + (if (item.note.isNotBlank()) " · ${item.note}" else ""))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Stepper(kg, { kg = it }, "Ağırlık (kg)", 2.5, Modifier.weight(1f))
@@ -230,7 +238,15 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                 PrimaryButton(
                     "Seti kaydet",
                     onClick = {
-                        vm.addSet(exercise.trim(), w!!, r!!, note.trim(), warmup, rpe)
+                        // Süperset: A'dan sonra kısa dinlenmeyle B'ye, B'den sonra normal dinlenmeyle A'ya geç
+                        val cur = template?.items?.firstOrNull { it.exercise.equals(exercise.trim(), true) }
+                        val group = if (!warmup && cur != null && cur.superset > 0) template.items.filter { it.superset == cur.superset } else emptyList()
+                        val isFirst = group.size == 2 && group[0].exercise.equals(cur?.exercise, true)
+                        vm.addSet(exercise.trim(), w!!, r!!, note.trim(), warmup, rpe, if (isFirst) 15 else null)
+                        if (group.size == 2) {
+                            val partner = if (isFirst) group[1] else group[0]
+                            if (doneSets(partner.exercise) < partner.sets) pick(partner.exercise)
+                        }
                         note = ""
                         rpe = null
                     },

@@ -130,28 +130,40 @@ val MUSCLES = listOf("Göğüs", "Sırt", "Bacak", "Omuz", "Kol", "Karın")
 val EXERCISES = listOf(
     ExerciseDef("Bench Press", "Göğüs"), ExerciseDef("Incline Bench Press", "Göğüs"),
     ExerciseDef("Dumbbell Press", "Göğüs"), ExerciseDef("Incline Dumbbell Press", "Göğüs"),
-    ExerciseDef("Cable Fly", "Göğüs"), ExerciseDef("Dips", "Göğüs"), ExerciseDef("Push-up", "Göğüs"),
+    ExerciseDef("Cable Fly", "Göğüs"), ExerciseDef("Chest Press", "Göğüs"), ExerciseDef("Incline Chest Press", "Göğüs"), ExerciseDef("Dips", "Göğüs"), ExerciseDef("Push-up", "Göğüs"),
     ExerciseDef("Deadlift", "Sırt"), ExerciseDef("Barbell Row", "Sırt"), ExerciseDef("Lat Pulldown", "Sırt"),
     ExerciseDef("Pull-up", "Sırt"), ExerciseDef("Seated Cable Row", "Sırt"), ExerciseDef("Dumbbell Row", "Sırt"),
-    ExerciseDef("Face Pull", "Sırt"),
+    ExerciseDef("Face Pull", "Sırt"), ExerciseDef("Seated Row", "Sırt"), ExerciseDef("Cable Row", "Sırt"),
     ExerciseDef("Squat", "Bacak"), ExerciseDef("Front Squat", "Bacak"), ExerciseDef("Leg Press", "Bacak"),
     ExerciseDef("Romanian Deadlift", "Bacak"), ExerciseDef("Leg Curl", "Bacak"), ExerciseDef("Leg Extension", "Bacak"),
-    ExerciseDef("Lunge", "Bacak"), ExerciseDef("Calf Raise", "Bacak"), ExerciseDef("Hip Thrust", "Bacak"),
+    ExerciseDef("Lunge", "Bacak"), ExerciseDef("Hack Squat", "Bacak"), ExerciseDef("Calf Raise", "Bacak"), ExerciseDef("Hip Thrust", "Bacak"),
     ExerciseDef("Overhead Press", "Omuz"), ExerciseDef("Dumbbell Shoulder Press", "Omuz"),
-    ExerciseDef("Lateral Raise", "Omuz"), ExerciseDef("Rear Delt Fly", "Omuz"), ExerciseDef("Arnold Press", "Omuz"),
-    ExerciseDef("Barbell Curl", "Kol"), ExerciseDef("Dumbbell Curl", "Kol"), ExerciseDef("Hammer Curl", "Kol"),
+    ExerciseDef("Lateral Raise", "Omuz"), ExerciseDef("Rear Delt Fly", "Omuz"), ExerciseDef("Arnold Press", "Omuz"), ExerciseDef("Shoulder Press", "Omuz"),
+    ExerciseDef("Barbell Curl", "Kol"), ExerciseDef("Dumbbell Curl", "Kol"), ExerciseDef("Hammer Curl", "Kol"), ExerciseDef("Biceps Cable Curl", "Kol"), ExerciseDef("Biceps Machine", "Kol"),
     ExerciseDef("Triceps Pushdown", "Kol"), ExerciseDef("Skull Crusher", "Kol"),
     ExerciseDef("Overhead Triceps Extension", "Kol"),
     ExerciseDef("Plank", "Karın"), ExerciseDef("Crunch", "Karın"), ExerciseDef("Hanging Leg Raise", "Karın"),
-    ExerciseDef("Cable Crunch", "Karın")
+    ExerciseDef("Cable Crunch", "Karın"), ExerciseDef("Karın Makinesi", "Karın")
 )
 
 fun muscleOf(exercise: String): String =
     EXERCISES.firstOrNull { it.name.equals(exercise.trim(), ignoreCase = true) }?.muscle ?: "Diğer"
 
 /** Programdaki bir hareket: hedef set × tekrar. */
-data class PlanItem(val exercise: String, val sets: Int = 3, val reps: Int = 10) {
-    val label get() = "$sets×$reps"
+/**
+ * Programdaki bir hareket. reps..repsMax tekrar aralığı (ör. 8–12),
+ * superset > 0 ise aynı numaralı hareketler süperset olarak arka arkaya yapılır.
+ */
+data class PlanItem(
+    val exercise: String,
+    val sets: Int = 3,
+    val reps: Int = 10,
+    val repsMax: Int = reps,
+    val superset: Int = 0,
+    val note: String = ""
+) {
+    val repsLabel get() = if (repsMax > reps) "$reps–$repsMax" else "$reps"
+    val label get() = "$sets×$repsLabel"
 }
 
 data class WorkoutTemplate(val name: String, val items: List<PlanItem>) {
@@ -161,7 +173,44 @@ data class WorkoutTemplate(val name: String, val items: List<PlanItem>) {
 private fun t(name: String, vararg items: Triple<String, Int, Int>) =
     WorkoutTemplate(name, items.map { PlanItem(it.first, it.second, it.third) })
 
-val TEMPLATES = listOf(
+private fun p(ex: String, sets: Int, reps: Int, max: Int = reps, ss: Int = 0, note: String = "") = PlanItem(ex, sets, reps, max, ss, note)
+
+/** Kullanıcının kendi programı: Upper A / Lower / Upper B. */
+val USER_PROGRAM = listOf(
+    WorkoutTemplate("Upper A", listOf(
+        p("Lat Pulldown", 4, 8, 12, note = "geniş tutuş"),
+        p("Chest Press", 3, 6, 10),
+        p("Seated Row", 3, 10, ss = 1),
+        p("Shoulder Press", 3, 8, 10, ss = 1),
+        p("Lateral Raise", 4, 12, 15, note = "son set drop"),
+        p("Triceps Pushdown", 3, 12, ss = 2),
+        p("Biceps Cable Curl", 3, 12, ss = 2),
+        p("Leg Curl", 3, 10, 12)
+    )),
+    WorkoutTemplate("Lower", listOf(
+        p("Hack Squat", 4, 6, 10),
+        p("Romanian Deadlift", 3, 8, 10),
+        p("Leg Press", 3, 10, 12),
+        p("Leg Extension", 3, 15, ss = 1),
+        p("Calf Raise", 4, 12, 15, ss = 1),
+        p("Lateral Raise", 3, 15, ss = 2),
+        p("Rear Delt Fly", 3, 15, ss = 2),
+        p("Karın Makinesi", 3, 12, 15),
+        p("Plank", 3, 45, note = "saniye")
+    )),
+    WorkoutTemplate("Upper B", listOf(
+        p("Lateral Raise", 4, 12, 15, note = "ilk hareket"),
+        p("Incline Chest Press", 4, 6, 10),
+        p("Lat Pulldown", 4, 10, 12, note = "dar tutuş"),
+        p("Cable Row", 3, 10, ss = 1),
+        p("Rear Delt Fly", 3, 15, ss = 1),
+        p("Overhead Triceps Extension", 3, 12, ss = 2),
+        p("Biceps Machine", 3, 10, 12, ss = 2),
+        p("Leg Extension", 3, 15)
+    ))
+)
+
+val TEMPLATES = USER_PROGRAM + listOf(
     t("Push", Triple("Bench Press", 4, 8), Triple("Overhead Press", 3, 8), Triple("Incline Dumbbell Press", 3, 10), Triple("Lateral Raise", 3, 15), Triple("Triceps Pushdown", 3, 12)),
     t("Pull", Triple("Deadlift", 3, 5), Triple("Pull-up", 3, 8), Triple("Barbell Row", 3, 10), Triple("Face Pull", 3, 15), Triple("Barbell Curl", 3, 12)),
     t("Legs", Triple("Squat", 4, 6), Triple("Romanian Deadlift", 3, 10), Triple("Leg Press", 3, 12), Triple("Leg Curl", 3, 12), Triple("Calf Raise", 4, 15)),
@@ -187,6 +236,7 @@ val WEEKDAY_NAMES = listOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cum
 data class WeekPreset(val name: String, val desc: String, val days: List<String>)
 
 val WEEK_PRESETS = listOf(
+    WeekPreset("Senin programın · Upper/Lower 3 gün", "Pzt Upper A · Çar Lower · Cum Upper B", listOf("Upper A", OFF_DAY, "Lower", OFF_DAY, "Upper B", OFF_DAY, OFF_DAY)),
     WeekPreset("PPL · 6 gün", "İleri seviye, her kas haftada 2 kez", listOf("Push", "Pull", "Legs", "Push", "Pull", "Legs", OFF_DAY)),
     WeekPreset("Üst / Alt · 4 gün", "Orta seviye için ideal denge", listOf("Üst Vücut", "Alt Vücut", OFF_DAY, "Üst Vücut", "Alt Vücut", OFF_DAY, OFF_DAY)),
     WeekPreset("Full Body · 3 gün", "Yeni başlayanlar için", listOf("Full Body", OFF_DAY, "Full Body", OFF_DAY, "Full Body", OFF_DAY, OFF_DAY)),
@@ -272,7 +322,18 @@ val FORM_TIPS = mapOf(
     "Hip Thrust" to "Sırt üstü bank kenarında, çene içeride. Yukarıda kalçayı 1 sn sık.",
     "Plank" to "Baştan topuğa düz çizgi; kalçayı düşürme, karın ve kalçayı sık.",
     "Dips" to "Omuzları aşağıda tut, dirsek 90°'ye kadar in, öne hafif eğil.",
-    "Face Pull" to "İpi yüze doğru çek, elleri kulak hizasında ayır, dirsekler yukarıda."
+    "Face Pull" to "İpi yüze doğru çek, elleri kulak hizasında ayır, dirsekler yukarıda.",
+    "Hack Squat" to "Sırtı pede yasla, ayaklar platformun ortasında. Dizleri içe kaçırmadan derin in.",
+    "Chest Press" to "Kürek kemiklerini geride tut, tutamaçlar göğüs ortası hizasında olsun.",
+    "Incline Chest Press" to "Üst göğsü hedefler; omuzları kaldırma, kontrollü indir.",
+    "Seated Row" to "Göğüs pede yaslı, dirsekleri arkaya çek, sonda kürek kemiklerini sık.",
+    "Cable Row" to "Gövdeyi sallamadan tutamacı göbeğe çek, kürek kemiklerini birleştir.",
+    "Shoulder Press" to "Sırt pede yaslı, belini bükme; yukarıda dirsekleri kilitleme.",
+    "Rear Delt Fly" to "Hafif ağırlık, dirsekler hafif bükük. Arka omzu hissederek yana aç.",
+    "Leg Curl" to "Kalçayı pedden kaldırma, yukarıda 1 sn sık, yavaş indir.",
+    "Leg Extension" to "Üstte 1 sn sık, ağırlığı savurmadan kontrollü indir.",
+    "Biceps Cable Curl" to "Dirsekler sabit, yukarıda sık, aşağıda kolu tam aç.",
+    "Karın Makinesi" to "Nefes verirken karnı büzerek eğil, kalçayla çekme."
 )
 
 // ---------------- Renk temaları (seviye ile açılır) ----------------

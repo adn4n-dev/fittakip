@@ -185,6 +185,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // Kullanıcının kendi programı: henüz plan kurulmadıysa bir kez otomatik yerleştir
+        if (!settings.value.programSeeded) {
+            store.update {
+                if (it.hasPlan) it.copy(programSeeded = true)
+                else it.copy(weekPlan = WEEK_PRESETS.first().days.joinToString(";"), programSeeded = true)
+            }
+        }
         val st = settings.value
         if (st.remindersOn) Reminders.schedule(app, st.reminderHour)
         Reminders.setMorning(app, st.morningOn)
@@ -290,7 +297,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Antrenman ----------
 
-    fun addSet(exercise: String, kg: Double, reps: Int, note: String, warmup: Boolean = false, rpe: Double? = null) = viewModelScope.launch {
+    fun addSet(exercise: String, kg: Double, reps: Int, note: String, warmup: Boolean = false, rpe: Double? = null, restOverride: Int? = null) = viewModelScope.launch {
         val name = normalizeExercise(exercise)
         val day = _workoutDay.value
         val bw = profile.value.profile?.weightKg ?: 0.0
@@ -304,7 +311,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             celebrate(Celebration.PR(name, newBest, oldBest))
             vibrate(250)
         }
-        startRest(if (warmup) 45 else settings.value.restSeconds)
+        startRest(restOverride ?: if (warmup) 45 else settings.value.restSeconds)
     }
 
     fun deleteSet(set: WorkoutSet) = viewModelScope.launch {
@@ -340,7 +347,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelSession() = store.update { it.copy(sessionStart = 0) }
 
     private fun serialize(list: List<WorkoutTemplate>) =
-        list.joinToString("\n") { t -> t.name + "|" + t.items.joinToString(";") { i -> "${i.exercise}:${i.sets}x${i.reps}" } }
+        list.joinToString("\n") { t ->
+            t.name + "|" + t.items.joinToString(";") { i ->
+                "${i.exercise}:${i.sets}x${i.reps}" + (if (i.repsMax > i.reps) "-${i.repsMax}" else "") + ":s${i.superset}:" + i.note.replace(Regex("[:;|]"), " ")
+            }
+        }
 
     fun saveTemplate(name: String, items: List<PlanItem>) = store.update {
         val others = it.templates.filter { t -> !t.name.equals(name, true) }
