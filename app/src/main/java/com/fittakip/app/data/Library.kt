@@ -123,33 +123,71 @@ enum class Meal(val label: String, val emoji: String) {
 
 // ---------------- Hareket kütüphanesi ----------------
 
-data class ExerciseDef(val name: String, val muscle: String)
+enum class Equipment(val label: String, val emoji: String, val step: Double) {
+    MACHINE("Makine", "⚙️", 5.0),
+    CABLE("Kablo", "🔗", 2.5),
+    DUMBBELL("Dambıl", "🏋️", 2.0),
+    BARBELL("Halter", "🏋️‍♂️", 2.5),
+    BODYWEIGHT("Vücut ağırlığı", "🤸", 2.5)
+}
+
+data class ExerciseDef(val name: String, val muscle: String, val equipment: Equipment)
 
 val MUSCLES = listOf("Göğüs", "Sırt", "Bacak", "Omuz", "Kol", "Karın")
 
+private fun e(name: String, muscle: String, eq: Equipment) = ExerciseDef(name, muscle, eq)
+private val M = Equipment.MACHINE
+private val C = Equipment.CABLE
+private val D = Equipment.DUMBBELL
+private val B = Equipment.BARBELL
+private val W = Equipment.BODYWEIGHT
+
 val EXERCISES = listOf(
-    ExerciseDef("Bench Press", "Göğüs"), ExerciseDef("Incline Bench Press", "Göğüs"),
-    ExerciseDef("Dumbbell Press", "Göğüs"), ExerciseDef("Incline Dumbbell Press", "Göğüs"),
-    ExerciseDef("Cable Fly", "Göğüs"), ExerciseDef("Chest Press", "Göğüs"), ExerciseDef("Incline Chest Press", "Göğüs"), ExerciseDef("Dips", "Göğüs"), ExerciseDef("Push-up", "Göğüs"),
-    ExerciseDef("Deadlift", "Sırt"), ExerciseDef("Barbell Row", "Sırt"), ExerciseDef("Lat Pulldown", "Sırt"),
-    ExerciseDef("Pull-up", "Sırt"), ExerciseDef("Seated Cable Row", "Sırt"), ExerciseDef("Dumbbell Row", "Sırt"),
-    ExerciseDef("Face Pull", "Sırt"), ExerciseDef("Seated Row", "Sırt"), ExerciseDef("Cable Row", "Sırt"),
-    ExerciseDef("Squat", "Bacak"), ExerciseDef("Front Squat", "Bacak"), ExerciseDef("Leg Press", "Bacak"),
-    ExerciseDef("Romanian Deadlift", "Bacak"), ExerciseDef("Leg Curl", "Bacak"), ExerciseDef("Leg Extension", "Bacak"),
-    ExerciseDef("Lunge", "Bacak"), ExerciseDef("Hack Squat", "Bacak"), ExerciseDef("Calf Raise", "Bacak"), ExerciseDef("Hip Thrust", "Bacak"),
-    ExerciseDef("Overhead Press", "Omuz"), ExerciseDef("Dumbbell Shoulder Press", "Omuz"),
-    ExerciseDef("Lateral Raise", "Omuz"), ExerciseDef("Rear Delt Fly", "Omuz"), ExerciseDef("Arnold Press", "Omuz"), ExerciseDef("Shoulder Press", "Omuz"),
-    ExerciseDef("Barbell Curl", "Kol"), ExerciseDef("Dumbbell Curl", "Kol"), ExerciseDef("Hammer Curl", "Kol"), ExerciseDef("Biceps Cable Curl", "Kol"), ExerciseDef("Biceps Machine", "Kol"),
-    ExerciseDef("Triceps Pushdown", "Kol"), ExerciseDef("Skull Crusher", "Kol"),
-    ExerciseDef("Overhead Triceps Extension", "Kol"),
-    ExerciseDef("Plank", "Karın"), ExerciseDef("Crunch", "Karın"), ExerciseDef("Hanging Leg Raise", "Karın"),
-    ExerciseDef("Cable Crunch", "Karın"), ExerciseDef("Karın Makinesi", "Karın")
+    // Göğüs
+    e("Chest Press", "Göğüs", M), e("Incline Chest Press", "Göğüs", M), e("Decline Chest Press", "Göğüs", M),
+    e("Pec Deck", "Göğüs", M), e("Smith Machine Bench Press", "Göğüs", M), e("Smith Machine Incline Press", "Göğüs", M),
+    e("Cable Fly", "Göğüs", C), e("Low-to-High Cable Fly", "Göğüs", C), e("High-to-Low Cable Fly", "Göğüs", C),
+    e("Bench Press", "Göğüs", B), e("Incline Bench Press", "Göğüs", B),
+    e("Dumbbell Press", "Göğüs", D), e("Incline Dumbbell Press", "Göğüs", D), e("Dumbbell Fly", "Göğüs", D),
+    e("Dips", "Göğüs", W), e("Push-up", "Göğüs", W),
+    // Sırt
+    e("Lat Pulldown", "Sırt", M), e("Seated Row", "Sırt", M), e("Chest Supported Row", "Sırt", M), e("T-Bar Row", "Sırt", M),
+    e("Assisted Pull-up", "Sırt", M), e("Pullover Machine", "Sırt", M), e("Back Extension", "Sırt", M), e("High Row Machine", "Sırt", M),
+    e("Cable Row", "Sırt", C), e("Seated Cable Row", "Sırt", C), e("Straight Arm Pulldown", "Sırt", C), e("Face Pull", "Sırt", C),
+    e("Single Arm Cable Row", "Sırt", C),
+    e("Deadlift", "Sırt", B), e("Barbell Row", "Sırt", B), e("Dumbbell Row", "Sırt", D), e("Pull-up", "Sırt", W),
+    // Bacak
+    e("Leg Press", "Bacak", M), e("Hack Squat", "Bacak", M), e("Pendulum Squat", "Bacak", M), e("Smith Machine Squat", "Bacak", M),
+    e("Leg Extension", "Bacak", M), e("Leg Curl", "Bacak", M), e("Seated Leg Curl", "Bacak", M), e("Lying Leg Curl", "Bacak", M),
+    e("Hip Abductor", "Bacak", M), e("Hip Adductor", "Bacak", M), e("Glute Kickback Machine", "Bacak", M),
+    e("Calf Raise", "Bacak", M), e("Seated Calf Raise", "Bacak", M), e("Hip Thrust Machine", "Bacak", M),
+    e("Cable Kickback", "Bacak", C), e("Cable Pull Through", "Bacak", C),
+    e("Squat", "Bacak", B), e("Front Squat", "Bacak", B), e("Romanian Deadlift", "Bacak", B), e("Hip Thrust", "Bacak", B),
+    e("Lunge", "Bacak", D), e("Bulgarian Split Squat", "Bacak", D),
+    // Omuz
+    e("Shoulder Press", "Omuz", M), e("Lateral Raise Machine", "Omuz", M), e("Rear Delt Fly", "Omuz", M),
+    e("Cable Lateral Raise", "Omuz", C), e("Cable Rear Delt Fly", "Omuz", C), e("Cable Upright Row", "Omuz", C),
+    e("Lateral Raise", "Omuz", D), e("Dumbbell Shoulder Press", "Omuz", D), e("Arnold Press", "Omuz", D),
+    e("Overhead Press", "Omuz", B),
+    // Kol
+    e("Biceps Machine", "Kol", M), e("Preacher Curl Machine", "Kol", M), e("Triceps Extension Machine", "Kol", M), e("Triceps Dip Machine", "Kol", M),
+    e("Biceps Cable Curl", "Kol", C), e("Cable Hammer Curl", "Kol", C), e("Triceps Pushdown", "Kol", C), e("Overhead Triceps Extension", "Kol", C),
+    e("Single Arm Triceps Pushdown", "Kol", C),
+    e("Dumbbell Curl", "Kol", D), e("Hammer Curl", "Kol", D), e("Incline Dumbbell Curl", "Kol", D),
+    e("Barbell Curl", "Kol", B), e("Skull Crusher", "Kol", B),
+    // Karın
+    e("Karın Makinesi", "Karın", M), e("Rotary Torso", "Karın", M), e("Cable Crunch", "Karın", C),
+    e("Plank", "Karın", W), e("Crunch", "Karın", W), e("Hanging Leg Raise", "Karın", W)
 )
+
+fun exerciseDef(name: String): ExerciseDef? = EXERCISES.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
+
+/** Ekipmana göre ağırlık artış adımı (makine 5 kg, kablo 2,5 kg, dambıl 2 kg). */
+fun weightStep(exercise: String): Double = exerciseDef(exercise)?.equipment?.step ?: 2.5
 
 fun muscleOf(exercise: String): String =
     EXERCISES.firstOrNull { it.name.equals(exercise.trim(), ignoreCase = true) }?.muscle ?: "Diğer"
 
-/** Programdaki bir hareket: hedef set × tekrar. */
 /**
  * Programdaki bir hareket. reps..repsMax tekrar aralığı (ör. 8–12),
  * superset > 0 ise aynı numaralı hareketler süperset olarak arka arkaya yapılır.
@@ -348,20 +386,4 @@ val ACCENTS = listOf(
     AccentTheme("PINK", "Pembe güç", 0xFFFF7AC6, 12)
 )
 
-// ---------------- Haftalık meydan okumalar ----------------
 
-enum class ChallengeKind { WORKOUT_DAYS, VOLUME, WATER_DAYS, CARDIO, PROTEIN_DAYS, ACTIVE_DAYS, SLEEP_DAYS }
-
-data class ChallengeDef(val kind: ChallengeKind, val title: String, val target: Double, val unit: String)
-
-val CHALLENGES = listOf(
-    ChallengeDef(ChallengeKind.WORKOUT_DAYS, "Bu hafta 4 gün antrenman yap", 4.0, "gün"),
-    ChallengeDef(ChallengeKind.VOLUME, "Bu hafta 10.000 kg kaldır", 10_000.0, "kg"),
-    ChallengeDef(ChallengeKind.WATER_DAYS, "5 gün su hedefini tuttur", 5.0, "gün"),
-    ChallengeDef(ChallengeKind.CARDIO, "Bu hafta 90 dk kardiyo", 90.0, "dk"),
-    ChallengeDef(ChallengeKind.PROTEIN_DAYS, "5 gün protein hedefine ulaş", 5.0, "gün"),
-    ChallengeDef(ChallengeKind.ACTIVE_DAYS, "Haftanın 7 günü kayıt gir", 7.0, "gün"),
-    ChallengeDef(ChallengeKind.SLEEP_DAYS, "5 gece en az 7 saat uyu", 5.0, "gece")
-)
-
-val FAST_PLANS = listOf(14, 16, 18, 20)

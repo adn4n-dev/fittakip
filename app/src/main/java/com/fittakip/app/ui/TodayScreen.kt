@@ -45,13 +45,10 @@ import java.time.LocalTime
 val TODAY_CARDS = listOf(
     "LEVEL" to "Seviye ve XP",
     "QUESTS" to "Günlük görevler",
-    "CHALLENGE" to "Haftalık meydan okuma",
     "QUICK" to "Hızlı özet",
     "CHECKIN" to "Günlük check-in",
-    "FASTING" to "Aralıklı oruç",
     "INSIGHTS" to "İçgörüler",
-    "BADGES" to "Son rozetler",
-    "QUOTE" to "Günün sözü"
+    "BADGES" to "Son rozetler"
 )
 
 @Composable
@@ -100,32 +97,13 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
             }
         }
         if (shown("LEVEL")) item { LevelCard(g) { onOpen(Sub.ACHIEVEMENTS) } }
-        if (shown("CHALLENGE")) item { ChallengeCard(g) }
         if (shown("CHECKIN") && settings.checkinItems.isNotEmpty()) item { CheckinCard(g) { onOpen(Sub.HABITS) } }
-        if (shown("FASTING")) item { FastingCard(vm) }
         if (shown("INSIGHTS") && g.insights.isNotEmpty()) item { InsightsCard(g) }
         if (shown("BADGES")) {
             val recent = g.achievements.filter { it.unlocked }.takeLast(6).reversed()
             if (recent.isNotEmpty()) item { RecentBadges(recent.map { it.emoji to it.title }) { onOpen(Sub.ACHIEVEMENTS) } }
         }
-        if (shown("QUOTE")) item {
-            FitCard {
-                Row {
-                    Icon(Icons.Rounded.FormatQuote, null, tint = FitColors.Orange, modifier = Modifier.size(28.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(g.quote, style = MaterialTheme.typography.titleMedium)
-                        HintText("Günün sözü")
-                    }
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton("Haftalık rapor", onClick = { onOpen(Sub.REPORT) }, icon = Icons.Rounded.Assessment, modifier = Modifier.weight(1f))
-                SecondaryButton("İstatistik", onClick = { onOpen(Sub.STATS) }, icon = Icons.Rounded.BarChart, modifier = Modifier.weight(1f))
-            }
-        }
+        item { SecondaryButton("Haftalık rapor", onClick = { onOpen(Sub.REPORT) }, icon = Icons.Rounded.Assessment, modifier = Modifier.fillMaxWidth()) }
         item { HintText("Bu ekranda hangi kartların görüneceğini Ayarlar > Bugün ekranı'ndan seçebilirsin.", Modifier.fillMaxWidth()) }
     }
 }

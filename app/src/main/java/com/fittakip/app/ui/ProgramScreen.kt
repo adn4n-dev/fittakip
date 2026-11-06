@@ -30,6 +30,7 @@ fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     var editingDay by rememberSaveable { mutableStateOf<Int?>(null) }
     var newTemplate by rememberSaveable { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<com.fittakip.app.data.WorkoutTemplate?>(null) }
     val todayIdx = LocalDate.now().dayOfWeek.value - 1
     val templates = settings.allTemplates
 
@@ -143,8 +144,12 @@ fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(t.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { editing = t }) { Text("Düzenle") }
+                            val builtIn = com.fittakip.app.data.TEMPLATES.any { it.name == t.name }
                             if (settings.templates.any { it.name == t.name }) {
-                                TextButton(onClick = { vm.deleteTemplate(t.name) }) { Text("Sil", color = MaterialTheme.colorScheme.error) }
+                                TextButton(onClick = { vm.deleteTemplate(t.name) }) {
+                                    Text(if (builtIn) "Orijinale dön" else "Sil", color = MaterialTheme.colorScheme.error)
+                                }
                             }
                         }
                         HintText(t.items.joinToString(" · ") { "${it.exercise} ${it.label}" })
@@ -160,8 +165,14 @@ fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
         item { HintText("Sabah bildirimini açarsan her sabah günün programını sana söylerim (Ayarlar > Hatırlatma).") }
     }
 
-    if (newTemplate) NewTemplateDialog(onDismiss = { newTemplate = false }) { n, items ->
+    if (newTemplate) NewTemplateDialog(unavailable = settings.unavailable, onDismiss = { newTemplate = false }) { n, items ->
         vm.saveTemplate(n, items)
         newTemplate = false
+    }
+    editing?.let { t ->
+        NewTemplateDialog(initial = t, unavailable = settings.unavailable, onDismiss = { editing = null }) { n, items ->
+            vm.saveTemplate(n, items, oldName = t.name)
+            editing = null
+        }
     }
 }

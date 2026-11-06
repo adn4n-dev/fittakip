@@ -35,8 +35,23 @@ data class AppSettings(
     val programSeeded: Boolean = false,
     val planMode: String = "WEEKDAY",        // WEEKDAY: günlere bağlı · ROTATION: sırayla
     val rotationStart: Long = 0,
-    val hiddenSections: Set<String> = emptySet()
+    val hiddenSections: Set<String> = emptySet(),
+    val unavailable: Set<String> = emptySet(),      // salonda olmayan makineler
+    val machineNotes: String = "{}",                 // {"Leg Press": "koltuk 4, ayak üstte"}
+    val autoBackupUri: String = "",                  // kullanıcının seçtiği klasör
+    val lastAutoBackup: Long = 0
 ) {
+    fun isAvailable(exercise: String) = unavailable.none { it.equals(exercise.trim(), true) }
+
+    fun machineNote(exercise: String): String =
+        try { org.json.JSONObject(machineNotes).optString(exercise.trim(), "") } catch (_: Exception) { "" }
+
+    fun withMachineNote(exercise: String, note: String): AppSettings {
+        val o = try { org.json.JSONObject(machineNotes) } catch (_: Exception) { org.json.JSONObject() }
+        if (note.isBlank()) o.remove(exercise.trim()) else o.put(exercise.trim(), note.trim())
+        return copy(machineNotes = o.toString())
+    }
+
     val rotation: Boolean get() = planMode == "ROTATION"
 
     /** 0 = Pazartesi … 6 = Pazar; boş = plan yok. */
@@ -63,7 +78,12 @@ data class AppSettings(
             if (name.isEmpty() || items.isEmpty()) null else WorkoutTemplate(name, items)
         }
 
-    val allTemplates: List<WorkoutTemplate> get() = TEMPLATES + templates
+    /** Kendi şablonların, aynı adlı hazır şablonun yerine geçer (hazır programı düzenleyebilmek için). */
+    val allTemplates: List<WorkoutTemplate>
+        get() {
+            val mine = templates
+            return mine + TEMPLATES.filter { b -> mine.none { it.name == b.name } }
+        }
 
     /** epochDay için plandaki şablon adı; "" plan yok, OFF_DAY dinlenme günü. */
     fun planFor(epochDay: Long): String = plan[java.time.LocalDate.ofEpochDay(epochDay).dayOfWeek.value - 1]
@@ -110,7 +130,11 @@ class SettingsStore(context: Context) {
         programSeeded = prefs.getBoolean("programSeeded", false),
         planMode = prefs.getString("planMode", "WEEKDAY") ?: "WEEKDAY",
         rotationStart = prefs.getLong("rotationStart", 0),
-        hiddenSections = set("hiddenSections", emptySet())
+        hiddenSections = set("hiddenSections", emptySet()),
+        unavailable = set("unavailable", emptySet()),
+        machineNotes = prefs.getString("machineNotes", "{}") ?: "{}",
+        autoBackupUri = prefs.getString("autoBackupUri", "") ?: "",
+        lastAutoBackup = prefs.getLong("lastAutoBackup", 0)
     )
 
     @Synchronized
@@ -148,6 +172,10 @@ class SettingsStore(context: Context) {
             .putString("planMode", s.planMode)
             .putLong("rotationStart", s.rotationStart)
             .putStringSet("hiddenSections", HashSet(s.hiddenSections))
+            .putStringSet("unavailable", HashSet(s.unavailable))
+            .putString("machineNotes", s.machineNotes)
+            .putString("autoBackupUri", s.autoBackupUri)
+            .putLong("lastAutoBackup", s.lastAutoBackup)
             .apply()
         _state.value = s
     }

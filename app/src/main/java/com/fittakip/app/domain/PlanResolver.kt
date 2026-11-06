@@ -53,6 +53,22 @@ object PlanResolver {
         return st.templateFor(day)?.let { DayPlan.Workout(it, false) } ?: DayPlan.None
     }
 
+    /** Birçok gün için planı tek geçişte hesaplar (sıralı modda her gün için baştan saymamak için). */
+    fun planMap(st: AppSettings, sets: List<WorkoutSet>, days: Collection<Long>): Map<Long, DayPlan> {
+        if (!st.rotation) return days.associateWith { forDay(st, sets, it) }
+        val order = order(st)
+        if (order.isEmpty()) return days.associateWith { DayPlan.None }
+        val byDay = sets.filter { it.counted() && it.epochDay >= st.rotationStart }.groupBy { it.epochDay }
+        val query = days.toSet()
+        val result = HashMap<Long, DayPlan>()
+        var idx = 0
+        for (d in (byDay.keys + query).toSortedSet()) {
+            if (d in query) result[d] = DayPlan.Workout(order[idx % order.size], true)
+            byDay[d]?.let { if (matches(order[idx % order.size], it)) idx++ }
+        }
+        return result
+    }
+
     fun templateFor(st: AppSettings, sets: List<WorkoutSet>, day: Long): WorkoutTemplate? =
         (forDay(st, sets, day) as? DayPlan.Workout)?.template
 

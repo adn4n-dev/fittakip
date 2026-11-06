@@ -357,17 +357,69 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-    fun saveTemplate(name: String, items: List<PlanItem>) = store.update {
-        val others = it.templates.filter { t -> !t.name.equals(name, true) }
-        it.copy(customTemplates = serialize(others + WorkoutTemplate(name.trim(), items)), activeTemplate = name.trim())
+    /** Yeni şablon ya da var olanı (hazır programlar dahil) düzenleme. Ad değişirse haftalık plan da güncellenir. */
+    fun saveTemplate(name: String, items: List<PlanItem>, oldName: String? = null) = store.update {
+        val n = name.trim()
+        val others = it.templates.filter { t -> !t.name.equals(n, true) && t.name != oldName }
+        val plan = if (oldName != null && oldName != n) it.plan.joinToString(";") { d -> if (d == oldName) n else d } else it.weekPlan
+        it.copy(
+            customTemplates = serialize(others + WorkoutTemplate(n, items)),
+            activeTemplate = if (oldName == null) n else it.activeTemplate.let { a -> if (a == oldName) n else a },
+            weekPlan = plan
+        )
     }
 
+    /** Kendi şablonunu siler; hazır bir programın düzenlenmiş haliyse orijinaline döner. */
     fun deleteTemplate(name: String) = store.update {
+        val isBuiltIn = TEMPLATES.any { t -> t.name == name }
         it.copy(
             customTemplates = serialize(it.templates.filter { t -> t.name != name }),
-            activeTemplate = if (it.activeTemplate == name) "" else it.activeTemplate,
-            weekPlan = it.plan.joinToString(";") { d -> if (d == name) "" else d }
+            activeTemplate = if (it.activeTemplate == name && !isBuiltIn) "" else it.activeTemplate,
+            weekPlan = if (isBuiltIn) it.weekPlan else it.plan.joinToString(";") { d -> if (d == name) "" else d }
         )
+    }
+
+    // ---------- Makineler ----------
+
+    fun setAvailable(exercise: String, available: Boolean) = store.update {
+        it.copy(unavailable = if (available) it.unavailable.filterNot { u -> u.equals(exercise, true) }.toSet() else it.unavailable + exercise)
+    }
+
+    fun setMachineNote(exercise: String, note: String) = store.update { it.withMachineNote(exercise, note) }
+
+    /** Salonda olmayan bir hareket için aynı kası çalıştıran, salonda olan alternatifler. */
+    fun alternativesFor(exercise: String): List<String> {
+        val def = exerciseDef(exercise) ?: return emptyList()
+        val st = settings.value
+        return EXERCISES.filter { it.muscle == def.muscle && it.name != def.name && st.isAvailable(it.name) }
+            .sortedBy { if (it.equipment == def.equipment) 0 else 1 }
+            .map { it.name }.take(4)
+    }
+
+    /** Programdaki bir hareketi başka bir hareketle değiştirir (şablon kendi kopyana kaydedilir). */
+    fun swapInTemplate(templateName: String, from: String, to: String) {
+        val t = settings.value.allTemplates.firstOrNull { it.name == templateName } ?: return
+        saveTemplate(t.name, t.items.map { if (it.exercise == from) it.copy(exercise = to) else it }, t.name)
+        _msgText = "$templateName: $from yerine $to kondu."
+    }
+
+    // ---------- Otomatik yedek ----------
+
+    fun setAutoBackupFolder(uri: Uri?) {
+        val app = getApplication<Application>()
+        if (uri != null) {
+            try {
+                app.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+        }
+        store.update { it.copy(autoBackupUri = uri?.toString() ?: "") }
+        com.fittakip.app.notify.AutoBackup.schedule(app, uri != null)
+        if (uri != null) viewModelScope.launch {
+            val ok = com.fittakip.app.notify.AutoBackup.run(app)
+            _msgText = if (ok) "Otomatik yedek açıldı, ilk yedek alındı. Her hafta tekrarlanacak." else "Klasöre yazılamadı, başka bir klasör seç."
+        }
     }
 
     // ---------- Haftalık program ----------
@@ -411,36 +463,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.addHabit(HabitLog(epochDay = today, type = type, value = value, text = text))
     }
 
-    fun addCaffeine(delta: Int) = viewModelScope.launch {
-        val current = habits.value.lastOrNull { it.epochDay == today && it.type == "CAFFEINE" }?.value ?: 0.0
-        val next = (current + delta).coerceAtLeast(0.0)
-        dao.clearHabit(today, "CAFFEINE")
-        if (next > 0) dao.addHabit(HabitLog(epochDay = today, type = "CAFFEINE", value = next))
-    }
-
     fun toggleSupplement(name: String) = viewModelScope.launch {
         val has = habits.value.any { it.epochDay == today && it.type == "SUPP" && it.text == name }
         if (has) dao.clearHabitText(today, "SUPP", name)
         else dao.addHabit(HabitLog(epochDay = today, type = "SUPP", value = 1.0, text = name))
     }
-
-    // ---------- Oruç ----------
-
-    fun startFast(goalHours: Int) = viewModelScope.launch {
-        if (fasts.value.any { it.end == null }) return@launch
-        dao.addFast(FastEntry(start = System.currentTimeMillis(), goalHours = goalHours))
-    }
-
-    fun endFast() = viewModelScope.launch {
-        val f = fasts.value.firstOrNull { it.end == null } ?: return@launch
-        val end = System.currentTimeMillis()
-        dao.updateFast(f.copy(end = end))
-        val h = (end - f.start) / 3_600_000.0
-        if (h >= f.goalHours) celebrate(Celebration.Custom("⏳", "Oruç tamamlandı!", "${"%.1f".format(h)} saat. Hedefin ${f.goalHours} saatti."))
-        else _msgText = "Oruç ${"%.1f".format(h)} saatte bitirildi."
-    }
-
-    fun deleteFast(f: FastEntry) = viewModelScope.launch { dao.deleteFast(f) }
 
     // ---------- Vücut ----------
 

@@ -154,7 +154,6 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
                         Sub.REPORT -> WeeklyReportScreen(vm) { sub = null }
                         Sub.SETTINGS -> SettingsScreen(vm, onBack = { sub = null }, onRequestNotifications = askNotifications, onProgram = { sub = Sub.PROGRAM })
                         Sub.HABITS -> HabitsScreen(vm) { sub = null }
-                        Sub.STATS -> StatsScreen(vm) { sub = null }
                         Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
                         Sub.PROGRAM -> ProgramScreen(vm) { sub = null }
                         null -> Crossfade(targetState = tab, label = "tab") { t ->

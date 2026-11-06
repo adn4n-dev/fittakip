@@ -50,10 +50,19 @@ class GamificationTest {
     }
 
     @Test
-    fun plates() {
-        val (plates, rest) = Calculator.plates(100.0)
-        assertEquals(listOf(25.0, 15.0), plates)
-        assertEquals(0.0, rest, 1e-9)
+    fun weightStep_byEquipment() {
+        assertEquals(5.0, com.fittakip.app.data.weightStep("Leg Press"), 1e-9)
+        assertEquals(2.5, com.fittakip.app.data.weightStep("Triceps Pushdown"), 1e-9)
+        assertEquals(2.0, com.fittakip.app.data.weightStep("Lateral Raise"), 1e-9)
+    }
+
+    @Test
+    fun rotationPlanMap_matchesSingleDay() {
+        val st = AppSettings(weekPlan = "Upper A;OFF;Lower;OFF;Upper B;OFF;OFF", planMode = "ROTATION", rotationStart = 0)
+        val sets = com.fittakip.app.data.USER_PROGRAM[0].items.map { WorkoutSet(epochDay = 5, exercise = it.exercise, weightKg = 20.0, reps = 10) }
+        val map = PlanResolver.planMap(st, sets, listOf(5L, 6L))
+        assertEquals(PlanResolver.forDay(st, sets, 5), map[5L])
+        assertEquals(PlanResolver.forDay(st, sets, 6), map[6L])
     }
 
     @Test

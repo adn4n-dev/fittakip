@@ -209,6 +209,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importFrom(it) }
     }
+    val folder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { vm.setAutoBackupFolder(it) } }
     val csvSets = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri -> uri?.let { vm.exportCsv(it, "sets") } }
     val csvFoods = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri -> uri?.let { vm.exportCsv(it, "foods") } }
     val game by vm.game.collectAsStateWithLifecycle()
@@ -372,6 +373,20 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Yedekle", onClick = { exporter.launch("fittakip-yedek-${LocalDate.now()}.json") }, icon = Icons.Rounded.Backup, modifier = Modifier.weight(1f))
                     SecondaryButton("Geri yükle", onClick = { importer.launch(arrayOf("application/json", "*/*")) }, icon = Icons.Rounded.Restore, modifier = Modifier.weight(1f))
+                }
+                Text("Otomatik haftalık yedek", style = MaterialTheme.typography.labelLarge)
+                if (settings.autoBackupUri.isEmpty()) {
+                    HintText("Bir klasör seç (ör. Google Drive içindeki bir klasör); her hafta oraya kendiliğinden yedek alırım. Telefon kaybolsa da verin gitmez.")
+                    SecondaryButton("Klasör seç ve aç", onClick = { folder.launch(null) }, icon = Icons.Rounded.Backup, modifier = Modifier.fillMaxWidth())
+                } else {
+                    HintText(
+                        "Açık ✅ " + if (settings.lastAutoBackup > 0)
+                            "Son yedek: ${dayLabel(settings.lastAutoBackup / 86_400_000, true)}" else "İlk yedek bekleniyor"
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Klasörü değiştir", onClick = { folder.launch(null) }, modifier = Modifier.weight(1f))
+                        SecondaryButton("Kapat", onClick = { vm.setAutoBackupFolder(null) }, modifier = Modifier.weight(1f))
+                    }
                 }
                 Text("Excel / Google Sheets için CSV", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

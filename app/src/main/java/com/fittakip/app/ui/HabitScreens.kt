@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.Coffee
 import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Medication
@@ -21,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fittakip.app.domain.Gamification
 import com.fittakip.app.domain.Stats
-import com.fittakip.app.domain.Totals
 import kotlin.math.roundToInt
 
 @Composable
@@ -37,7 +35,7 @@ private val MOODS = listOf("😫", "😕", "😐", "🙂", "😄")
 
 val CHECKIN_OPTIONS = listOf(
     "SLEEP" to "😴 Uyku", "MOOD" to "🙂 Ruh hali", "STEPS" to "👟 Adım",
-    "CAFFEINE" to "☕ Kafein", "SUPP" to "💊 Takviye", "NOTE" to "📝 Not"
+    "SUPP" to "💊 Takviye", "NOTE" to "📝 Not"
 )
 
 // ---------------- Günlük check-in ----------------
@@ -79,12 +77,6 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
         if ("SLEEP" in settings.checkinItems) item {
             SectionCard("Uyku", icon = Icons.Rounded.Bedtime) {
                 Stepper(value("SLEEP")?.clean() ?: "7", { v -> v.toNum()?.let { if (it in 0.0..16.0) vm.setHabit("SLEEP", it) } }, "Dün gece kaç saat uyudun?", 0.5)
-                Text("Kalitesi", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (1..5).forEach { q ->
-                        SelectCard(value("SLEEP_Q")?.toInt() == q, { vm.setHabit("SLEEP_Q", q.toDouble()) }, "★".repeat(q), Modifier.weight(1f))
-                    }
-                }
                 val week = (6 downTo 0).map { today - it }
                 val vals = week.map { d -> habits.lastOrNull { it.epochDay == d && it.type == "SLEEP" }?.value ?: 0.0 }
                 if (vals.any { it > 0 }) {
@@ -95,16 +87,10 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
 
         if ("MOOD" in settings.checkinItems) item {
-            SectionCard("Ruh hali ve enerji", icon = Icons.Rounded.Mood) {
+            SectionCard("Ruh hali", icon = Icons.Rounded.Mood) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     MOODS.forEachIndexed { i, e ->
                         SelectCard(value("MOOD")?.toInt() == i + 1, { vm.setHabit("MOOD", (i + 1).toDouble()) }, e, Modifier.weight(1f))
-                    }
-                }
-                Text("Enerji", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (1..5).forEach { q ->
-                        SelectCard(value("ENERGY")?.toInt() == q, { vm.setHabit("ENERGY", q.toDouble()) }, "⚡".repeat(q.coerceAtMost(3)) + if (q > 3) "+" else "", Modifier.weight(1f), "$q")
                     }
                 }
                 val moods = (6 downTo 0).map { d -> habits.lastOrNull { it.epochDay == today - d && it.type == "MOOD" }?.value?.toInt() }
@@ -135,23 +121,6 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
-        if ("CAFFEINE" in settings.checkinItems) item {
-            SectionCard("Kafein", icon = Icons.Rounded.Coffee) {
-                val cups = value("CAFFEINE")?.toInt() ?: 0
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("☕".repeat(cups.coerceAtMost(8)).ifEmpty { "Bugün kahve/çay yok" }, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { vm.addCaffeine(-1) }, enabled = cups > 0) { Text("−", style = MaterialTheme.typography.headlineMedium) }
-                    IconButton(onClick = { vm.addCaffeine(1) }) { Text("+", style = MaterialTheme.typography.headlineMedium) }
-                }
-                HintText(
-                    when {
-                        cups >= 5 -> "Günde ~400 mg üstü kafein uykunu bozabilir. Öğleden sonra azaltmayı dene."
-                        else -> "$cups fincan · ≈ ${cups * 80} mg kafein"
-                    }
-                )
-            }
-        }
-
         if ("SUPP" in settings.checkinItems) item {
             SectionCard("Takviyeler", icon = Icons.Rounded.Medication) {
                 if (settings.supplements.isEmpty()) HintText("Listende takviye yok. Aşağıdan ekleyebilirsin.")
@@ -179,53 +148,6 @@ fun HabitsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 PrimaryButton("Notu kaydet", onClick = { vm.setHabit("NOTE", 1.0, note.trim()) }, enabled = note.isNotBlank() && note != noteToday)
                 val past = habits.filter { it.type == "NOTE" && it.epochDay < today }.takeLast(3).reversed()
                 past.forEach { HintText("${dayLabel(it.epochDay)}: ${it.text}") }
-            }
-        }
-    }
-}
-
-// ---------------- Tüm zamanlar istatistikleri ----------------
-
-@Composable
-fun StatsScreen(vm: AppViewModel, onBack: () -> Unit) {
-    val game by vm.game.collectAsStateWithLifecycle()
-    val g = game ?: return
-    var month by rememberSaveable { mutableStateOf(false) }
-    val t = if (month) g.thisMonth else g.allTime
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { BackHeader("İstatistikler", onBack) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SelectCard(!month, { month = false }, "Tüm zamanlar", Modifier.weight(1f))
-                SelectCard(month, { month = true }, "Bu ay", Modifier.weight(1f))
-            }
-        }
-        item { StatsGrid(t, g.xp, g.longestStreak) }
-    }
-}
-
-@Composable
-private fun StatsGrid(t: Totals, xp: Int, longest: Int) {
-    val rows = listOf(
-        "Aktif gün" to "${t.activeDays}",
-        "Antrenman günü" to "${t.workoutDays}",
-        "Set" to "${t.sets}",
-        "Kaldırılan" to "${(t.volume / 1000).fmt()} ton",
-        "Kişisel rekor" to "${t.prs}",
-        "Yemek kaydı" to "${t.foods}",
-        "İçilen su" to "${t.waterL.fmt()} L",
-        "Kardiyo" to "${t.cardioMin} dk",
-        "Oruç" to "${t.fasts} · en uzun ${t.longestFastH.fmt()} sa",
-        "Ortalama uyku" to (t.avgSleep?.let { "${it.fmt()} sa" } ?: "—"),
-        "Kronometreli antrenman" to "${t.sessions}" + (t.avgSessionMin?.let { " · ort. $it dk" } ?: ""),
-        "En uzun seri" to "$longest gün",
-        "Toplam XP" to "$xp"
-    )
-    FitCard {
-        rows.forEach { (k, v) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(k, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text(v, style = MaterialTheme.typography.titleSmall)
             }
         }
     }
@@ -269,21 +191,24 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
                     MetricTile("En iyi seans", "${bestSession.value.sumOf { it.weightKg * it.reps }.roundToInt()} kg", Modifier.weight(1f))
                 }
                 HintText("${work.map { it.epochDay }.toSet().size} antrenman · ${work.size} set · ${prs.size} rekor")
-                state.profile?.let { p ->
-                    com.fittakip.app.domain.Calculator.strengthLevel(name, prog.best, p.weightKg, p.male)?.let { (lvl, f) ->
-                        Text("Güç seviyesi: $lvl", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
-                        ProgressBar(f, FitColors.Lime)
-                        HintText("Vücut ağırlığının ${(prog.best / p.weightKg).fmt(2)} katı")
-                    }
-                }
                 com.fittakip.app.data.FORM_TIPS[com.fittakip.app.data.EXERCISES.firstOrNull { it.name.equals(name, true) }?.name ?: name]?.let {
                     HintText("💡 Form: $it")
                 }
             }
         }
         item {
+            var range by remember { mutableIntStateOf(0) }
+            val days = listOf(0, 30, 90, 180)
             SectionCard("Gelişim") {
-                TrendChart(prog.history, prog.fit, prog.fitStartDay)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Tümü", "1 ay", "3 ay", "6 ay").forEachIndexed { i, l -> SelectCard(range == i, { range = i }, l, Modifier.weight(1f)) }
+                }
+                val h = if (range == 0) prog.history else prog.history.filter { it.first >= vm.today - days[range] }
+                if (h.size >= 2) {
+                    TrendChart(h, if (range == 0 || range == 2) prog.fit else null, prog.fitStartDay)
+                    val change = h.last().second - h.first().second
+                    HintText("Bu aralıkta tahmini 1RM: ${h.first().second.fmt()} → ${h.last().second.fmt()} kg (${change.signed()} kg, %${(change / h.first().second * 100).signed()})")
+                } else HintText("Bu aralıkta yeterli kayıt yok.")
             }
         }
         if (prs.isNotEmpty()) {

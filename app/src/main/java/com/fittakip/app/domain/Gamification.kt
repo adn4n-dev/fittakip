@@ -4,9 +4,7 @@ import com.fittakip.app.data.counted
 import com.fittakip.app.data.AppSettings
 import com.fittakip.app.data.BodyMeasure
 import com.fittakip.app.data.BodyWeight
-import com.fittakip.app.data.CHALLENGES
 import com.fittakip.app.data.CardioEntry
-import com.fittakip.app.data.ChallengeKind
 import com.fittakip.app.data.CustomFood
 import com.fittakip.app.data.FastEntry
 import com.fittakip.app.data.FoodEntry
@@ -53,11 +51,6 @@ data class Achievement(
 
 data class Quest(val title: String, val detail: String, val done: Boolean, val xp: Int = 20)
 
-data class Challenge(val title: String, val current: Double, val target: Double, val unit: String, val xp: Int = 150) {
-    val done get() = current >= target
-    val progress get() = (current / target).coerceIn(0.0, 1.0).toFloat()
-}
-
 data class WeekStats(
     val start: Long,
     val workoutDays: Int,
@@ -74,22 +67,6 @@ data class WeekStats(
     val avgSleep: Double?
 )
 
-data class Totals(
-    val activeDays: Int,
-    val workoutDays: Int,
-    val sets: Int,
-    val volume: Double,
-    val foods: Int,
-    val waterL: Double,
-    val cardioMin: Int,
-    val fasts: Int,
-    val longestFastH: Double,
-    val prs: Int,
-    val avgSleep: Double?,
-    val sessions: Int,
-    val avgSessionMin: Int?
-)
-
 data class GameState(
     val activeDays: Set<Long>,
     val streakDays: Set<Long>,
@@ -104,7 +81,6 @@ data class GameState(
     val xpForLevel: Int,
     val achievements: List<Achievement>,
     val quests: List<Quest>,
-    val challenge: Challenge,
     val weekWorkoutDays: Int,
     val weekGoal: Int,
     val waterGoal: Int,
@@ -117,8 +93,6 @@ data class GameState(
     val thisWeek: WeekStats,
     val lastWeek: WeekStats,
     val insights: List<String>,
-    val allTime: Totals,
-    val thisMonth: Totals,
     val checkinDone: Int,
     val checkinTotal: Int
 )
@@ -206,37 +180,57 @@ object Gamification {
      * Günün görevleri: 2 sabit (öğün, su) + günün planına göre antrenman ya da aktif dinlenme
      * + her gün değişen bir bonus görev.
      */
-    fun questsFor(day: Long, d: AllData, waterGoal: Int, proteinTarget: Int?, kcalTarget: Int?, st: AppSettings): List<Quest> {
-        val foods = d.foods.filter { it.epochDay == day }
-        val water = d.water.filter { it.epochDay == day }.sumOf { it.ml }
+    /** Günlere göre önceden gruplanmış veri: aylarca kayıt birikince hesaplar yavaşlamasın diye. */
+    class DayIndex(d: AllData) {
+        val foods = d.foods.groupBy { it.epochDay }
+        val water = d.water.groupBy { it.epochDay }.mapValues { e -> e.value.sumOf { it.ml } }
+        val sets = d.sets.filter { it.counted() }.groupBy { it.epochDay }
+        val cardio = d.cardio.groupBy { it.epochDay }.mapValues { e -> e.value.sumOf { it.minutes } }
+        val weighed = d.weights.map { it.epochDay }.toSet()
+        val habits = d.habits.groupBy { it.epochDay }
+    }
+
+    fun questsFor(day: Long, d: AllData, waterGoal: Int, proteinTarget: Int?, kcalTarget: Int?, st: AppSettings): List<Quest> =
+        questsFor(day, DayIndex(d), PlanResolver.forDay(st, d.sets, day), waterGoal, proteinTarget, kcalTarget, st)
+
+    /**
+     * Günün görevleri: 2 sabit (öğün, su) + günün planına göre antrenman ya da aktif dinlenme
+     * + her gün değişen bir bonus görev.
+     */
+    fun questsFor(day: Long, ix: DayIndex, dayPlan: DayPlan, waterGoal: Int, proteinTarget: Int?, kcalTarget: Int?, st: AppSettings): List<Quest> {
+        val foods = ix.foods[day].orEmpty()
+        val water = ix.water[day] ?: 0
         val protein = foods.sumOf { it.protein }
         val kcal = foods.sumOf { it.kcal }
-        val daySets = d.sets.filter { it.epochDay == day && it.counted() }
+        val daySets = ix.sets[day].orEmpty()
+        val habits = ix.habits[day].orEmpty()
         val list = mutableListOf(
             Quest("Öğünlerini kaydet", "En az 3 yemek gir (${foods.size}/3)", foods.size >= 3),
             Quest("Su hedefini tamamla", "$water / $waterGoal ml", water >= waterGoal)
         )
-        val dayPlan = PlanResolver.forDay(st, d.sets, day)
         val tpl = (dayPlan as? DayPlan.Workout)?.template
         list += when {
             dayPlan is DayPlan.Off -> {
-                val steps = d.habits.lastOrNull { it.epochDay == day && it.type == "STEPS" }?.value ?: 0.0
-                val cardioMin = d.cardio.filter { it.epochDay == day }.sumOf { it.minutes }
+                val steps = habits.lastOrNull { it.type == "STEPS" }?.value ?: 0.0
+                val cardioMin = ix.cardio[day] ?: 0
                 Quest("Aktif dinlenme", "20 dk hafif kardiyo ya da 6.000 adım", cardioMin >= 20 || steps >= 6000)
             }
             tpl != null -> {
                 val done = tpl.items.count { item -> daySets.count { it.exercise.trim().equals(item.exercise, true) } >= item.sets }
                 Quest("${tpl.name} programını bitir", "$done / ${tpl.items.size} hareket hedef sete ulaştı", done == tpl.items.size, 30)
             }
-            else -> Quest("Hareket et", "Bir set ya da kardiyo kaydet", daySets.isNotEmpty() || d.cardio.any { it.epochDay == day })
+            else -> Quest("Hareket et", "Bir set ya da kardiyo kaydet", daySets.isNotEmpty() || (ix.cardio[day] ?: 0) > 0)
         }
         val bonusPool = buildList {
             if (proteinTarget != null) add(Quest("Protein hedefi", "${protein.toInt()} / $proteinTarget g", protein >= proteinTarget * 0.9))
-            add(Quest("Tartıl", "Sabah aç karnına tartı gir", d.weights.any { it.epochDay == day }))
+            add(Quest("Tartıl", "Sabah aç karnına tartı gir", day in ix.weighed))
             if (kcalTarget != null) add(Quest("Hedefte kal", "Kalori hedefinin ±%10'u ($kcal / $kcalTarget)", kcal in (kcalTarget * 0.9).toInt()..(kcalTarget * 1.1).toInt()))
-            if ("SLEEP" in st.checkinItems) add(Quest("Uykunu kaydet", "Check-in'den dünkü uykunu gir", d.habits.any { it.epochDay == day && it.type == "SLEEP" }))
+            if ("SLEEP" in st.checkinItems) add(Quest("Uykunu kaydet", "Check-in'den dünkü uykunu gir", habits.any { it.type == "SLEEP" }))
         }
-        if (bonusPool.isNotEmpty()) list += bonusPool[((day % bonusPool.size).toInt() + bonusPool.size) % bonusPool.size].copy(title = "Bonus: " + bonusPool[((day % bonusPool.size).toInt() + bonusPool.size) % bonusPool.size].title)
+        if (bonusPool.isNotEmpty()) {
+            val q = bonusPool[((day % bonusPool.size).toInt() + bonusPool.size) % bonusPool.size]
+            list += q.copy(title = "Bonus: " + q.title)
+        }
         return list
     }
 
@@ -262,46 +256,6 @@ object Gamification {
             muscleVolume = byMuscle.mapValues { e -> e.value.sumOf { it.weightKg * it.reps } },
             muscleSets = byMuscle.mapValues { it.value.size },
             avgSleep = if (sleep.isEmpty()) null else sleep.average()
-        )
-    }
-
-    private fun challengeFor(weekStart: Long, d: AllData, waterGoal: Int, proteinTarget: Int?, days: Set<Long>): Challenge {
-        val def = CHALLENGES[((weekStart / 7) % CHALLENGES.size).toInt().let { if (it < 0) it + CHALLENGES.size else it }]
-        val range = weekStart..(weekStart + 6)
-        val current = when (def.kind) {
-            ChallengeKind.WORKOUT_DAYS -> d.sets.filter { it.epochDay in range }.map { it.epochDay }.toSet().size.toDouble()
-            ChallengeKind.VOLUME -> d.workSets.filter { it.epochDay in range }.sumOf { it.weightKg * it.reps }
-            ChallengeKind.WATER_DAYS -> d.water.filter { it.epochDay in range }.groupBy { it.epochDay }
-                .values.count { l -> l.sumOf { it.ml } >= waterGoal }.toDouble()
-            ChallengeKind.CARDIO -> d.cardio.filter { it.epochDay in range }.sumOf { it.minutes }.toDouble()
-            ChallengeKind.PROTEIN_DAYS -> if (proteinTarget == null) 0.0 else d.foods.filter { it.epochDay in range }
-                .groupBy { it.epochDay }.values.count { l -> l.sumOf { it.protein } >= proteinTarget * 0.9 }.toDouble()
-            ChallengeKind.ACTIVE_DAYS -> days.count { it in range }.toDouble()
-            ChallengeKind.SLEEP_DAYS -> d.habits.count { it.type == "SLEEP" && it.epochDay in range && it.value >= 7 }.toDouble()
-        }
-        return Challenge(def.title, current, def.target, def.unit)
-    }
-
-    private fun totals(d: AllData, range: LongRange?, prs: List<Pair<Long, String>>, waterGoal: Int): Totals {
-        fun inR(day: Long) = range == null || day in range
-        val sets = d.workSets.filter { inR(it.epochDay) }
-        val fasts = d.fasts.filter { it.end != null && inR(LocalDate.ofEpochDay(it.start / 86_400_000).toEpochDay()) }
-        val sleep = d.habits.filter { it.type == "SLEEP" && inR(it.epochDay) }.map { it.value }
-        val sessions = d.sessions.filter { inR(it.epochDay) }
-        return Totals(
-            activeDays = activeDays(d).count { inR(it) },
-            workoutDays = d.sets.filter { inR(it.epochDay) }.map { it.epochDay }.toSet().size,
-            sets = sets.size,
-            volume = sets.sumOf { it.weightKg * it.reps },
-            foods = d.foods.count { inR(it.epochDay) },
-            waterL = d.water.filter { inR(it.epochDay) }.sumOf { it.ml } / 1000.0,
-            cardioMin = d.cardio.filter { inR(it.epochDay) }.sumOf { it.minutes },
-            fasts = fasts.size,
-            longestFastH = fasts.maxOfOrNull { (it.end!! - it.start) / 3_600_000.0 } ?: 0.0,
-            prs = prs.count { inR(it.first) },
-            avgSleep = if (sleep.isEmpty()) null else sleep.average(),
-            sessions = sessions.size,
-            avgSessionMin = if (sessions.isEmpty()) null else sessions.map { (it.end - it.start) / 60_000 }.average().toInt()
         )
     }
 
@@ -335,8 +289,6 @@ object Gamification {
                 out += "Son 2 haftada ${days.size} günün ${hit} tanesinde protein hedefini tutturdun."
             }
         }
-        val caffeine = d.habits.filter { it.type == "CAFFEINE" }
-        if (caffeine.size >= 5) out += "Günde ortalama ${caffeine.groupBy { it.epochDay }.values.map { l -> l.sumOf { it.value } }.average().fmt1()} fincan kafein alıyorsun."
         return out
     }
 
@@ -358,13 +310,12 @@ object Gamification {
         val kcalTarget = calc?.target
         val totalVolume = d.workSets.sumOf { it.weightKg * it.reps }
 
-        // Geçmiş haftaların tamamlanan meydan okumaları
         val firstDay = realDays.minOrNull() ?: today
-        val challenges = generateSequence(weekStart(firstDay)) { it + 7 }.takeWhile { it <= weekStart(today) }
-            .map { challengeFor(it, d, waterGoal, proteinTarget, realDays) }.toList()
-        val challengesDone = challenges.count { it.done }
-
-        val questXp = realDays.sumOf { day -> questsFor(day, d, waterGoal, proteinTarget, kcalTarget, st).filter { it.done }.sumOf { it.xp } }
+        val ix = DayIndex(d)
+        val plans = PlanResolver.planMap(st, d.sets, realDays + today)
+        val questXp = realDays.sumOf { day ->
+            questsFor(day, ix, plans[day] ?: DayPlan.None, waterGoal, proteinTarget, kcalTarget, st).filter { it.done }.sumOf { it.xp }
+        }
         // XP şişirilemesin: su ve alışkanlıklar kayıt başına değil, gün başına sayılır; yemek günde en fazla 6 kayıt
         val waterXpDays = d.water.groupBy { it.epochDay }.values.count { l -> l.sumOf { it.ml } >= waterGoal }
         val habitDays = d.habits.map { it.epochDay }.toSet().size
@@ -372,7 +323,7 @@ object Gamification {
         val setXp = d.workSets.groupBy { it.epochDay }.values.sumOf { minOf(it.size, 30) } * 3
         val xp = foodXp + setXp + d.weights.map { it.epochDay }.toSet().size * 10 + waterXpDays * 10 +
             d.cardio.size * 15 + d.measures.size * 10 + workoutDays.size * 25 + prs.size * 40 + questXp +
-            challengesDone * 150 + habitDays * 5 + d.fasts.count { it.end != null } * 20 + d.photos.size * 15 + d.sessions.size * 10
+            habitDays * 5 + d.photos.size * 15 + d.sessions.size * 10
         val level = levelOf(xp)
 
         val waterByDay = d.water.groupBy { it.epochDay }.mapValues { e -> e.value.sumOf { it.ml } }
@@ -387,10 +338,6 @@ object Gamification {
         val towardGoal = if (startW != null && lastW != null && target != null) {
             if (target < startW) startW - lastW else lastW - startW
         } else 0.0
-        fun best(name: String) = d.workSets.filter { it.exercise.trim().equals(name, true) }
-            .maxOfOrNull { Stats.epley1RM(it.weightKg, it.reps) } ?: 0.0
-        val bw = lastW ?: p?.weightKg ?: 999.0
-        val fastHours = d.fasts.filter { it.end != null }.maxOfOrNull { (it.end!! - it.start) / 3_600_000.0 } ?: 0.0
         val sleep7 = d.habits.count { it.type == "SLEEP" && it.value >= 7 }
         val maxSteps = d.habits.filter { it.type == "STEPS" }.maxOfOrNull { it.value } ?: 0.0
         val suppDays = d.habits.filter { it.type == "SUPP" }.groupBy { it.epochDay }.values
@@ -446,18 +393,12 @@ object Gamification {
             ),
             Achievement("cardio_5", "🏃", "Kardiyo kralı", "5 kardiyo seansı", d.cardio.size.toDouble(), 5.0),
             Achievement("measure_1", "📏", "Mezura", "İlk vücut ölçünü gir", d.measures.size.toDouble(), 1.0),
-            Achievement("bench_bw", "💪", "Kendi ağırlığın", "Bench 1RM'in vücut ağırlığına ulaşsın", best("bench press"), bw),
-            Achievement("squat_15", "🦵", "Bacak günü", "Squat 1RM'in vücut ağırlığının 1,5 katı", best("squat"), bw * 1.5),
-            Achievement("dead_2", "🏗️", "Ağır sıklet", "Deadlift 1RM'in vücut ağırlığının 2 katı", best("deadlift"), bw * 2),
             Achievement("level_10", "⭐", "Seviye 10", "10. seviyeye çık", level.toDouble(), 10.0),
-            Achievement("fast_16", "⏳", "Oruç ustası", "16 saatlik orucu tamamla", fastHours, 16.0),
             Achievement("sleep_7", "😴", "Uykucu", "7 gece en az 7 saat uyu", sleep7.toDouble(), 7.0),
             Achievement("steps_10k", "👟", "On bin adım", "Bir günde 10.000 adım", maxSteps, 10_000.0),
             Achievement("photo_1", "📸", "Albüm", "İlk ilerleme fotoğrafın", d.photos.size.toDouble(), 1.0),
             Achievement("mood_7", "🧠", "Kendini tanı", "7 gün ruh halini kaydet", d.habits.count { it.type == "MOOD" }.toDouble(), 7.0),
             Achievement("journal_10", "📝", "Günlükçü", "10 günlük not yaz", d.habits.count { it.type == "NOTE" }.toDouble(), 10.0),
-            Achievement("challenge_1", "🎖️", "Meydan okuyan", "Bir haftalık meydan okumayı tamamla", challengesDone.toDouble(), 1.0),
-            Achievement("challenge_5", "🛡️", "Savaşçı", "5 haftalık meydan okuma", challengesDone.toDouble(), 5.0),
             Achievement("freeze", "🧊", "Kurtarıcı", "Seri dondurma hakkını kullan", st.frozen.size.toDouble(), 1.0),
             Achievement("session_10", "⏱️", "Kronometre", "10 antrenmanı kronometreyle tut", d.sessions.size.toDouble(), 10.0),
             Achievement("template", "🗂️", "Programcı", "Kendi antrenman programını oluştur", st.templates.size.toDouble(), 1.0),
@@ -467,7 +408,6 @@ object Gamification {
         )
 
         val ws = weekStart(today)
-        val monthStart = LocalDate.ofEpochDay(today).withDayOfMonth(1).toEpochDay()
         val checkTypes = st.checkinItems.toList()
         val checkDone = checkTypes.count { t -> d.habits.any { it.epochDay == today && it.type == t } }
 
@@ -484,8 +424,7 @@ object Gamification {
             xpIntoLevel = xp - xpForLevel(level),
             xpForLevel = xpForLevel(level + 1) - xpForLevel(level),
             achievements = achievements,
-            quests = questsFor(today, d, waterGoal, proteinTarget, kcalTarget, st),
-            challenge = challengeFor(ws, d, waterGoal, proteinTarget, realDays),
+            quests = questsFor(today, ix, plans[today] ?: DayPlan.None, waterGoal, proteinTarget, kcalTarget, st),
             weekWorkoutDays = workoutDays.count { it in ws..(ws + 6) } +
                 d.cardio.map { it.epochDay }.filter { it in ws..(ws + 6) && it !in workoutDays }.toSet().size,
             weekGoal = st.weeklyWorkoutGoal,
@@ -499,8 +438,6 @@ object Gamification {
             thisWeek = weekStats(d, ws, waterGoal, prs),
             lastWeek = weekStats(d, ws - 7, waterGoal, prs),
             insights = insights(d, proteinTarget),
-            allTime = totals(d, null, prs, waterGoal),
-            thisMonth = totals(d, monthStart..today, prs, waterGoal),
             checkinDone = checkDone,
             checkinTotal = checkTypes.size
         )

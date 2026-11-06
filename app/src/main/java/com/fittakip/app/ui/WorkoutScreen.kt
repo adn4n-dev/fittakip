@@ -58,7 +58,6 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     var reps by rememberSaveable { mutableStateOf("8") }
     var note by rememberSaveable { mutableStateOf("") }
     var editing by remember { mutableStateOf<WorkoutSet?>(null) }
-    var tools by rememberSaveable { mutableStateOf(false) }
     var cardioOpen by rememberSaveable { mutableStateOf(false) }
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
     var warmup by rememberSaveable { mutableStateOf(false) }
@@ -85,6 +84,11 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val template = allTemplates.firstOrNull { it.name == settings.activeTemplate } ?: planned
     val daySets = sets.filter { it.epochDay == wDay && it.counted() }
     fun doneSets(ex: String) = daySets.count { it.exercise.trim().equals(ex, true) }
+    fun nextPlanExercise(after: String): String? {
+        val items = template?.items ?: return null
+        val i = items.indexOfFirst { it.exercise.equals(after, true) }
+        return (items.drop(i + 1) + items.take(i.coerceAtLeast(0))).firstOrNull { doneSets(it.exercise) < it.sets && it.exercise != after }?.exercise
+    }
     val lastToday = sets.firstOrNull { it.epochDay == wDay && it.exercise.trim().equals(exercise.trim(), true) }
 
     LazyColumn(
@@ -98,7 +102,6 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                 IconButton(onClick = { vm.shiftWorkoutDay(-1) }) { Icon(Icons.Rounded.ChevronLeft, "Önceki gün") }
                 IconButton(onClick = { vm.shiftWorkoutDay(1) }, enabled = wDay < vm.today) { Icon(Icons.Rounded.ChevronRight, "Sonraki gün") }
                 IconButton(onClick = { library = true }) { Icon(Icons.AutoMirrored.Rounded.MenuBook, "Hareket kütüphanesi") }
-                IconButton(onClick = { tools = true }) { Icon(Icons.Rounded.Calculate, "Araçlar") }
             }
         }
 
@@ -165,6 +168,14 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                                             val partner = template.items.firstOrNull { it.superset == item.superset && it.exercise != ex }
                                             if (partner != null) Text("⚡ Süperset S${item.superset} · ${partner.exercise} ile", style = MaterialTheme.typography.labelSmall, color = FitColors.Orange)
                                         }
+                                        if (!settings.isAvailable(ex)) {
+                                            Text("⚠️ Salonunda yok olarak işaretli. Yerine:", style = MaterialTheme.typography.labelSmall, color = FitColors.Red)
+                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                vm.alternativesFor(ex).forEach { alt ->
+                                                    Pill(alt, FitColors.Lime, onClick = { vm.swapInTemplate(template.name, ex, alt); pick(alt) })
+                                                }
+                                            }
+                                        }
                                     }
                                     Text("${n.coerceAtMost(item.sets)}/${item.sets}", style = MaterialTheme.typography.titleMedium, color = if (isDone) FitColors.Lime else MaterialTheme.colorScheme.onSurface)
                                 }
@@ -181,7 +192,8 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
             SectionCard("Set ekle", icon = Icons.Rounded.FitnessCenter) {
                 TextInput(exercise, { exercise = it }, "Hareket (ör. Bench Press)")
                 val q = exercise.trim()
-                val suggestions = if (q.isEmpty()) names.take(8) else names.filter {
+                val usable = names.filter { settings.isAvailable(it) }
+                val suggestions = if (q.isEmpty()) usable.take(8) else usable.filter {
                     it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true)
                 }.take(8)
                 if (suggestions.isNotEmpty()) {
@@ -190,6 +202,17 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     }
                 }
                 val planItem = template?.items?.firstOrNull { it.exercise.equals(q, true) }
+                if (q.isNotEmpty()) {
+                    val prev = sets.filter { it.exercise.trim().equals(q, true) && it.epochDay < wDay && !it.warmup }
+                    prev.maxOfOrNull { it.epochDay }?.let { lastDay ->
+                        val ls = prev.filter { it.epochDay == lastDay }.reversed()
+                        Text(
+                            "Geçen sefer (${dayLabel(lastDay)}): " + ls.joinToString(", ") { (if (it.isDrop) "↓" else "") + "${it.weightKg.clean()}×${it.reps}" },
+                            style = MaterialTheme.typography.bodyMedium, color = FitColors.Blue
+                        )
+                    }
+                    MachineNoteRow(q, settings.machineNote(q)) { vm.setMachineNote(q, it) }
+                }
                 if (q.isNotEmpty()) {
                     (if (planItem != null) Calculator.rangeSuggestion(sets, planItem, wDay) else Calculator.suggestion(sets, q, vm.today))?.let { tip ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -210,7 +233,8 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     HintText("Hedef: ${item.label} · yapılan ${doneSets(item.exercise)}/${item.sets} set" + (if (item.note.isNotBlank()) " · ${item.note}" else ""))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Stepper(kg, { kg = it }, "Ağırlık (kg)", 2.5, Modifier.weight(1f))
+                    val step = com.fittakip.app.data.weightStep(q)
+                    Stepper(kg, { kg = it }, "Ağırlık (kg) · ±${step.clean()}", step, Modifier.weight(1f))
                     Stepper(reps, { reps = it }, "Tekrar", 1.0, Modifier.weight(1f))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -232,7 +256,8 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         drop = it
                         if (it && dropKg.isBlank()) {
                             // Varsayılan: ağırlığın ~%25 azı, aynı tekrar
-                            dropKg = ((kg.toNum() ?: 0.0) * 0.75 / 2.5).let { v -> kotlin.math.round(v) * 2.5 }.clean()
+                            val st = com.fittakip.app.data.weightStep(exercise)
+                            dropKg = ((kg.toNum() ?: 0.0) * 0.75 / st).let { v -> kotlin.math.round(v) * st }.clean()
                             dropReps = reps
                         }
                     })
@@ -244,7 +269,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                 }
                 if (drop) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Stepper(dropKg, { dropKg = it }, "↓ Drop ağırlık", 2.5, Modifier.weight(1f))
+                        Stepper(dropKg, { dropKg = it }, "↓ Drop ağırlık", com.fittakip.app.data.weightStep(q), Modifier.weight(1f))
                         Stepper(dropReps, { dropReps = it }, "↓ Drop tekrar", 1.0, Modifier.weight(1f))
                     }
                 }
@@ -278,6 +303,13 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         if (group.size == 2) {
                             val partner = if (isFirst) group[1] else group[0]
                             if (doneSets(partner.exercise) < partner.sets) pick(partner.exercise)
+                            else if (doneSets(cur!!.exercise) + 1 >= cur.sets) nextPlanExercise(cur.exercise)?.let { pick(it) }
+                        } else if (!warmup && cur != null && doneSets(cur.exercise) + 1 >= cur.sets) {
+                            // Hedef setler bitti: programdaki sıradaki harekete geç
+                            nextPlanExercise(cur.exercise)?.let {
+                                pick(it)
+                                vm.toast("${cur.exercise} tamam ✅ Sıradaki: $it")
+                            }
                         }
                         note = ""
                         rpe = null
@@ -332,12 +364,16 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
 
     editing?.let { s -> EditSetDialog(s, onDismiss = { editing = null }, onSave = { vm.updateSet(it); editing = null }, onDelete = { vm.deleteSet(s); editing = null }) }
 
-    if (tools) ToolsSheet(initialKg = kg.toNum() ?: 60.0) { tools = false }
     if (newTemplate) NewTemplateDialog(onDismiss = { newTemplate = false }) { n, ex ->
         vm.saveTemplate(n, ex)
         newTemplate = false
     }
-    if (library) LibrarySheet(onDismiss = { library = false }, onDetail = { library = false; onOpenExercise(it) }) {
+    if (library) LibrarySheet(
+        unavailable = settings.unavailable,
+        onToggleAvailable = { n, on -> vm.setAvailable(n, on) },
+        onDismiss = { library = false },
+        onDetail = { library = false; onOpenExercise(it) }
+    ) {
         pick(it)
         library = false
     }
@@ -466,66 +502,6 @@ private fun DayCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ToolsSheet(initialKg: Double, onDismiss: () -> Unit) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var total by rememberSaveable { mutableStateOf(initialKg.clean()) }
-    var bar by rememberSaveable { mutableStateOf("20") }
-    var oneRm by rememberSaveable { mutableStateOf("100") }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item { Text("Araçlar", style = MaterialTheme.typography.headlineMedium) }
-            item {
-                SectionCard("Plaka hesaplayıcı") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Stepper(total, { total = it }, "Toplam (kg)", 2.5, Modifier.weight(1f))
-                        Stepper(bar, { bar = it }, "Bar (kg)", 2.5, Modifier.weight(1f))
-                    }
-                    val t = total.toNum()
-                    val b = bar.toNum()
-                    if (t != null && b != null) {
-                        val (plates, rest) = Calculator.plates(t, b)
-                        if (plates.isEmpty()) HintText("Toplam ağırlık bardan fazla olmalı.")
-                        else {
-                            Text("Her iki tarafa:", style = MaterialTheme.typography.labelLarge)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                plates.forEach { p ->
-                                    val color = when (p) {
-                                        25.0 -> FitColors.Red; 20.0 -> FitColors.Blue; 15.0 -> FitColors.Orange
-                                        10.0 -> FitColors.Lime; else -> MaterialTheme.colorScheme.onSurface
-                                    }
-                                    Pill(p.clean(), color)
-                                }
-                            }
-                            if (rest > 0.01) HintText("${rest.fmt(2)} kg plakayla tamamlanamıyor.")
-                        }
-                    }
-                }
-            }
-            item {
-                SectionCard("1RM yüzde tablosu") {
-                    Stepper(oneRm, { oneRm = it }, "1RM (kg)", 2.5)
-                    val orm = oneRm.toNum() ?: 0.0
-                    val rows = listOf(95 to 2, 90 to 3, 85 to 5, 80 to 6, 75 to 8, 70 to 10, 65 to 12, 60 to 15)
-                    rows.forEach { (pct, rep) ->
-                        Row(Modifier.fillMaxWidth()) {
-                            Text("%$pct", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp), color = FitColors.Lime)
-                            Text("${(orm * pct / 100 / 2.5).roundToInt() * 2.5} kg".replace(".0 kg", " kg").replace('.', ','),
-                                style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            HintText("≈ $rep tekrar")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-
 @Composable
 private fun EditSetDialog(s: WorkoutSet, onDismiss: () -> Unit, onSave: (WorkoutSet) -> Unit, onDelete: () -> Unit) {
     var kg by remember { mutableStateOf(s.weightKg.clean()) }
@@ -590,5 +566,34 @@ fun ExactAlarmHint() {
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }) { Text("İzin ver") }
+    }
+}
+
+
+/** Makine ayarı notu: koltuk yüksekliği, pim, tutuş gibi. */
+@Composable
+private fun MachineNoteRow(exercise: String, note: String, onSave: (String) -> Unit) {
+    var editing by remember(exercise) { mutableStateOf(false) }
+    var text by remember(exercise, note) { mutableStateOf(note) }
+    if (editing) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextInput(text, { text = it }, "Makine ayarı (ör. koltuk 4, pim 3)", Modifier.weight(1f))
+            TextButton(onClick = { onSave(text); editing = false }) { Text("Kaydet") }
+        }
+    } else {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { editing = true },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                if (note.isBlank()) "⚙️ Makine ayarı ekle (koltuk, pim, tutuş…)" else "⚙️ Ayar: $note",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (note.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else FitColors.Orange,
+                modifier = Modifier.weight(1f)
+            )
+            Text("Düzenle", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

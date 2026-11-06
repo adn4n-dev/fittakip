@@ -19,7 +19,11 @@ import androidx.compose.ui.unit.dp
 import com.fittakip.app.data.EXERCISES
 import com.fittakip.app.data.FORM_TIPS
 import com.fittakip.app.data.MUSCLES
+import com.fittakip.app.data.Equipment
 import com.fittakip.app.data.PlanItem
+import com.fittakip.app.data.WorkoutTemplate
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
@@ -56,41 +60,83 @@ fun SessionCard(start: Long, vm: AppViewModel) {
     }
 }
 
-private val SCHEMES = listOf(3 to 10, 4 to 8, 5 to 5, 3 to 12, 4 to 6, 3 to 15)
+/** Set × tekrar seçenekleri (min–max). Dokundukça sıradakine geçer. */
+private val SCHEMES = listOf(
+    Triple(3, 10, 10), Triple(3, 8, 12), Triple(4, 8, 12), Triple(3, 6, 10), Triple(4, 6, 10), Triple(3, 8, 10),
+    Triple(3, 10, 12), Triple(3, 12, 15), Triple(4, 12, 15), Triple(3, 15, 15), Triple(5, 5, 5), Triple(4, 6, 8)
+)
 
+/** Antrenman düzenleyici: yeni oluşturma ya da var olanı (hazır programlar dahil) değiştirme. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun NewTemplateDialog(onDismiss: () -> Unit, onSave: (String, List<PlanItem>) -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var chosen by remember { mutableStateOf(listOf<PlanItem>()) }
+fun NewTemplateDialog(
+    initial: WorkoutTemplate? = null,
+    unavailable: Set<String> = emptySet(),
+    onDismiss: () -> Unit,
+    onSave: (String, List<PlanItem>) -> Unit
+) {
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+    var chosen by remember { mutableStateOf(initial?.items ?: listOf()) }
     var muscle by remember { mutableStateOf(MUSCLES.first()) }
+    var adding by remember { mutableStateOf(initial == null) }
+    fun update(i: Int, f: (PlanItem) -> PlanItem) { chosen = chosen.toMutableList().also { l -> l[i] = f(l[i]) } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Kendi antrenmanın") },
+        title = { Text(if (initial == null) "Yeni antrenman" else "${initial.name} düzenle") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
-                TextInput(name, { name = it }, "Ad (ör. Göğüs-Kol)")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MUSCLES.forEach { m -> Pill(m, if (m == muscle) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = m }) }
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    EXERCISES.filter { it.muscle == muscle }.forEach { e ->
-                        val on = chosen.any { it.exercise == e.name }
-                        Pill(if (on) "✓ ${e.name}" else "+ ${e.name}", if (on) FitColors.Orange else MaterialTheme.colorScheme.onSurface, onClick = {
-                            chosen = if (on) chosen.filter { it.exercise != e.name } else chosen + PlanItem(e.name, 3, 10)
-                        })
-                    }
-                }
-                if (chosen.isEmpty()) HintText("Hareketleri sırayla seç. Set × tekrar hedefini sonra dokunarak değiştirebilirsin.")
+                TextInput(name, { name = it }, "Ad (ör. Upper A)")
                 chosen.forEachIndexed { i, item ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${i + 1}. ${item.exercise}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Pill(item.label, FitColors.Lime, onClick = {
-                            val idx = SCHEMES.indexOfFirst { it.first == item.sets && it.second == item.reps }
-                            val next = SCHEMES[(idx + 1) % SCHEMES.size]
-                            chosen = chosen.toMutableList().also { l -> l[i] = item.copy(sets = next.first, reps = next.second) }
-                        })
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${i + 1}. ${item.exercise}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            if (i > 0) Text("▲", Modifier.clickable { chosen = chosen.toMutableList().also { l -> val t = l[i]; l[i] = l[i - 1]; l[i - 1] = t } }.padding(6.dp))
+                            if (i < chosen.size - 1) Text("▼", Modifier.clickable { chosen = chosen.toMutableList().also { l -> val t = l[i]; l[i] = l[i + 1]; l[i + 1] = t } }.padding(6.dp))
+                            Text("✕", Modifier.clickable { chosen = chosen.filterIndexed { j, _ -> j != i } }.padding(6.dp), color = FitColors.Red)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Pill(item.label, FitColors.Lime, onClick = {
+                                val idx = SCHEMES.indexOfFirst { it.first == item.sets && it.second == item.reps && it.third == item.repsMax }
+                                val n = SCHEMES[(idx + 1) % SCHEMES.size]
+                                update(i) { it.copy(sets = n.first, reps = n.second, repsMax = n.third) }
+                            })
+                            if (i < chosen.size - 1) {
+                                val linked = item.superset > 0 && chosen[i + 1].superset == item.superset
+                                Pill(if (linked) "⚡ Süperset ✓" else "⚡ Alttakiyle süperset", if (linked) FitColors.Orange else MaterialTheme.colorScheme.onSurfaceVariant, onClick = {
+                                    if (linked) {
+                                        update(i) { it.copy(superset = 0) }; update(i + 1) { it.copy(superset = 0) }
+                                    } else {
+                                        val g = (chosen.maxOfOrNull { it.superset } ?: 0) + 1
+                                        update(i) { it.copy(superset = g) }; update(i + 1) { it.copy(superset = g) }
+                                    }
+                                })
+                            }
+                        }
+                        if (unavailable.any { it.equals(item.exercise, true) }) HintText("⚠️ Salonunda yok olarak işaretli")
+                        TextInput(item.note, { v -> update(i) { it.copy(note = v.replace(Regex("[:;|]"), " ")) } }, "Not (ör. son set drop, geniş tutuş)")
                     }
+                }
+                if (adding) {
+                    Text("Hareket ekle", style = MaterialTheme.typography.titleSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MUSCLES.forEach { m -> Pill(m, if (m == muscle) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = m }) }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        EXERCISES.filter { it.muscle == muscle && unavailable.none { u -> u.equals(it.name, true) } }.forEach { e ->
+                            val on = chosen.any { it.exercise == e.name }
+                            Pill((if (on) "✓ " else "+ ") + e.name, if (on) FitColors.Orange else MaterialTheme.colorScheme.onSurface, onClick = {
+                                chosen = if (on) chosen.filter { it.exercise != e.name } else chosen + PlanItem(e.name, 3, 8, 12)
+                            })
+                        }
+                    }
+                } else {
+                    TextButton(onClick = { adding = true }) { Text("+ Hareket ekle") }
                 }
             }
         },
@@ -104,31 +150,67 @@ fun NewTemplateDialog(onDismiss: () -> Unit, onSave: (String, List<PlanItem>) ->
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun LibrarySheet(onDismiss: () -> Unit, onDetail: (String) -> Unit, onPick: (String) -> Unit) {
+fun LibrarySheet(
+    unavailable: Set<String>,
+    onToggleAvailable: (String, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    onDetail: (String) -> Unit,
+    onPick: (String) -> Unit
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var muscle by remember { mutableStateOf<String?>(null) }
+    var equipment by remember { mutableStateOf<Equipment?>(null) }
+    var editGym by remember { mutableStateOf(false) }
+    fun available(n: String) = unavailable.none { it.equals(n, true) }
+    val list = EXERCISES.filter { (muscle == null || it.muscle == muscle) && (equipment == null || it.equipment == equipment) }
+        .filter { editGym || available(it.name) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         LazyColumn(
-            Modifier.fillMaxHeight(0.9f),
+            Modifier.fillMaxHeight(0.92f),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { Text("Hareket kütüphanesi", style = MaterialTheme.typography.headlineMedium) }
             item {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Pill("Tümü", if (muscle == null) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = null })
-                    MUSCLES.forEach { m -> Pill(m, if (m == muscle) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = m }) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Hareketler", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                    Pill(if (editGym) "Bitti" else "⚙️ Salonumu düzenle", if (editGym) FitColors.Lime else FitColors.Orange, onClick = { editGym = !editGym })
                 }
             }
-            items(EXERCISES.filter { muscle == null || it.muscle == muscle }, key = { it.name }) { e ->
-                Surface(onClick = { onPick(e.name) }, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            if (editGym) item {
+                HintText("Salonunda olmayan makinelerin işaretini kaldır. Öneriler ve listeler sadece salonundakileri gösterir; programındaki bir makine yoksa yerine alternatif önerilir.")
+            }
+            item {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Pill("Tüm ekipman", if (equipment == null) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { equipment = null })
+                    Equipment.entries.forEach { e -> Pill("${e.emoji} ${e.label}", if (e == equipment) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { equipment = e }) }
+                }
+            }
+            item {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Pill("Tüm kaslar", if (muscle == null) FitColors.Blue else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = null })
+                    MUSCLES.forEach { m -> Pill(m, if (m == muscle) FitColors.Blue else MaterialTheme.colorScheme.onSurfaceVariant, onClick = { muscle = m }) }
+                }
+            }
+            item { HintText("${list.size} hareket" + if (!editGym && unavailable.isNotEmpty()) " · ${unavailable.size} makine salonunda yok olarak gizlendi" else "") }
+            items(list, key = { it.name }) { e ->
+                val on = available(e.name)
+                Surface(
+                    onClick = { if (editGym) onToggleAvailable(e.name, !on) else onPick(e.name) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = if (on) 0.05f else 0.02f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(e.name, style = MaterialTheme.typography.titleSmall)
-                            HintText(e.muscle)
-                            FORM_TIPS[e.name]?.let { HintText("💡 $it") }
+                            Text(e.name, style = MaterialTheme.typography.titleSmall, color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                            HintText("${e.equipment.emoji} ${e.equipment.label} · ${e.muscle}")
+                            if (!editGym) FORM_TIPS[e.name]?.let { HintText("💡 $it") }
                         }
-                        IconButton(onClick = { onDetail(e.name) }) { Icon(Icons.Rounded.Info, "Geçmiş ve detay", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        if (editGym) {
+                            Switch(checked = on, onCheckedChange = { onToggleAvailable(e.name, it) })
+                        } else {
+                            IconButton(onClick = { onDetail(e.name) }) { Icon(Icons.Rounded.Info, "Geçmiş ve detay", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
                     }
                 }
             }

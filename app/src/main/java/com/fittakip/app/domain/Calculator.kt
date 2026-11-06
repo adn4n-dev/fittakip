@@ -109,47 +109,6 @@ object Calculator {
         return 18.5 * m2 to 24.9 * m2
     }
 
-    fun waistHipRatio(waist: Double?, hip: Double?): Double? =
-        if (waist != null && hip != null && hip > 0) waist / hip else null
-
-    fun whrRisk(ratio: Double, male: Boolean): String {
-        val limit = if (male) 0.90 else 0.85
-        return when {
-            ratio < limit - 0.05 -> "Düşük risk"
-            ratio < limit -> "Orta"
-            else -> "Yüksek risk"
-        }
-    }
-
-    /** DOTS skoru: farklı vücut ağırlıklarını karşılaştırılabilir kılan powerlifting puanı. */
-    fun dots(total: Double, bw: Double, male: Boolean): Double {
-        val c = if (male) doubleArrayOf(-307.75076, 24.0900756, -0.1918759221, 0.0007391293, -0.000001093)
-        else doubleArrayOf(-57.96288, 13.6175032, -0.1126655495, 0.0005158568, -0.0000010706)
-        val w = bw.coerceIn(40.0, 210.0)
-        val denom = c[0] + c[1] * w + c[2] * w * w + c[3] * w * w * w + c[4] * w * w * w * w
-        return if (denom <= 0) 0.0 else total * 500 / denom
-    }
-
-    /** Vücut ağırlığına oranla güç seviyesi (yaklaşık standartlar). */
-    fun strengthLevel(exercise: String, e1rm: Double, bw: Double, male: Boolean): Pair<String, Float>? {
-        val base = when (exercise.trim().lowercase()) {
-            "bench press" -> doubleArrayOf(0.5, 0.75, 1.0, 1.5, 2.0)
-            "squat" -> doubleArrayOf(0.75, 1.0, 1.5, 2.0, 2.5)
-            "deadlift" -> doubleArrayOf(1.0, 1.25, 1.75, 2.25, 3.0)
-            "overhead press" -> doubleArrayOf(0.35, 0.5, 0.7, 1.0, 1.3)
-            else -> return null
-        }
-        val f = if (male) 1.0 else 0.65
-        val ratio = e1rm / bw / f
-        val names = listOf("Yeni başlayan", "Acemi", "Orta", "İleri", "Elit")
-        var idx = 0
-        for (i in base.indices) if (ratio >= base[i]) idx = i
-        if (ratio < base[0]) return "Yeni başlayan" to (ratio / base[0]).toFloat().coerceIn(0f, 1f)
-        val next = base.getOrNull(idx + 1)
-        val prog = if (next == null) 1f else ((ratio - base[idx]) / (next - base[idx])).toFloat().coerceIn(0f, 1f)
-        return names[idx] to prog
-    }
-
     /** Kilo başına 35 ml, 250 ml'ye yuvarlanmış. */
     fun waterGoalMl(kg: Double): Int = ((kg * 35 / 250).roundToInt() * 250).coerceIn(1500, 5000)
 
@@ -176,20 +135,6 @@ object Calculator {
 
     fun cardioKcal(met: Double, kg: Double, minutes: Int): Int = (met * kg * minutes / 60).roundToInt()
 
-    /** Barın her iki yanına takılacak plakalar. */
-    fun plates(total: Double, bar: Double = 20.0): Pair<List<Double>, Double> {
-        var perSide = (total - bar) / 2
-        if (perSide <= 0) return emptyList<Double>() to 0.0
-        val result = mutableListOf<Double>()
-        for (p in listOf(25.0, 20.0, 15.0, 10.0, 5.0, 2.5, 1.25)) {
-            while (perSide + 1e-9 >= p) {
-                result += p
-                perSide -= p
-            }
-        }
-        return result to perSide * 2
-    }
-
     /** Geçen seansa göre bu seans için ağırlık/tekrar önerisi (progressive overload). */
     /**
      * Çift ilerleme (double progression): hedef aralığın üst sınırına tüm setlerde ulaştıysan ağırlık artır,
@@ -203,7 +148,7 @@ object Calculator {
         val w = last.maxOf { it.weightKg }
         val atW = last.filter { it.weightKg == w }
         val allTop = atW.size >= item.sets && atW.all { it.reps >= item.repsMax }
-        val step = if (w >= 40) 2.5 else 1.25
+        val step = com.fittakip.app.data.weightStep(item.exercise)
         return when {
             allTop -> "Geçen sefer ${fmtKg(w)} kg ile tüm setlerde ${item.repsMax} tekrar yaptın 🎯 Bu sefer ${fmtKg(w + step)} kg'a çık, ${item.reps} tekrardan başla."
             atW.any { it.reps < item.reps } -> "Geçen sefer ${fmtKg(w)} kg'da ${item.reps} tekrarın altına düştün. Aynı ağırlıkta kal, aralığın içine gir."

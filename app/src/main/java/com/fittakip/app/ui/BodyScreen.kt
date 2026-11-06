@@ -54,8 +54,6 @@ fun BodyScreen(vm: AppViewModel) {
     val trend = remember(weights, profile) { ProgressAnalyzer.analyzeWeight(weights, profile?.targetWeightKg, goal) }
     var input by rememberSaveable { mutableStateOf("") }
     var measureOpen by rememberSaveable { mutableStateOf(false) }
-    var picker by remember { mutableStateOf(false) }
-    fun show(id: String) = id !in settings.hiddenSections
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -93,7 +91,7 @@ fun BodyScreen(vm: AppViewModel) {
 
         // Akıllı kalori ayarı
         trend?.let { t ->
-            if (show("B_ADVICE")) item {
+            item {
                 FitCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBadge(Icons.Rounded.Lightbulb, FitColors.Orange, 36.dp)
@@ -126,7 +124,7 @@ fun BodyScreen(vm: AppViewModel) {
                 }
             }
             if (t.history.size >= 2) {
-                if (show("B_CHART")) item {
+                item {
                     SectionCard("Kilo grafiği", icon = Icons.Rounded.Insights) {
                         TrendChart(t.history, t.fit, t.fitStartDay)
                     }
@@ -136,13 +134,13 @@ fun BodyScreen(vm: AppViewModel) {
 
         // BMI ve yağ oranı
         if (profile != null) {
-            if (show("B_COMPOSITION")) item { CompositionCard(profile, weights.lastOrNull()?.kg ?: profile.weightKg, measures.lastOrNull()) }
+            item { CompositionCard(profile, weights.lastOrNull()?.kg ?: profile.weightKg, measures.lastOrNull()) }
         }
 
-        if (show("B_PHOTOS")) item { PhotosCard(vm) }
+        item { PhotosCard(vm) }
 
         // Ölçüler
-        if (show("B_MEASURES")) item {
+        item {
             if (measureOpen) {
                 MeasureForm(onClose = { measureOpen = false }) {
                     vm.addMeasure(it)
@@ -154,15 +152,11 @@ fun BodyScreen(vm: AppViewModel) {
         }
 
         if (weights.isNotEmpty()) {
-            if (show("B_HISTORY")) item { Text("Tartı geçmişi", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
+            item { Text("Tartı geçmişi", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
         }
         val rows = weights.mapIndexed { i, w -> w to (if (i > 0) w.kg - weights[i - 1].kg else null) }.reversed().take(30)
-        if (show("B_HISTORY")) items(rows, key = { it.first.id }) { (w, delta) -> WeightRow(w, delta) { vm.deleteWeight(w) } }
-        item { SecondaryButton("Kartları düzenle", onClick = { picker = true }, icon = Icons.Rounded.Tune, modifier = Modifier.fillMaxWidth()) }
+        items(rows, key = { it.first.id }) { (w, delta) -> WeightRow(w, delta) { vm.deleteWeight(w) } }
     }
-    if (picker) CardPicker("Vücut kartları", BODY_CARDS, settings.hiddenSections, onToggle = { id, on ->
-        vm.updateSettings { it.copy(hiddenSections = if (on) it.hiddenSections - id else it.hiddenSections + id) }
-    }) { picker = false }
 }
 
 @Composable
@@ -192,16 +186,7 @@ private fun CompositionCard(p: Profile, kg: Double, m: BodyMeasure?) {
             HintText("Yağ oranı için bel ve boyun ölçüsü gir${if (!p.male) " (kadınlarda kalça da)" else ""}. ABD Donanması formülü kullanılır.")
         }
         val (lo, hi) = Calculator.idealWeightRange(p.heightCm)
-        val whr = Calculator.waistHipRatio(m?.waist, m?.hip)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricTile("Sağlıklı kilo aralığı", "${lo.fmt(0)}–${hi.fmt(0)} kg", Modifier.weight(1f))
-            MetricTile(
-                "Bel / kalça oranı",
-                if (whr != null) "${whr.fmt(2)} · ${Calculator.whrRisk(whr, p.male)}" else "Ölçü gir",
-                Modifier.weight(1f),
-                if (whr != null && Calculator.whrRisk(whr, p.male) == "Yüksek risk") FitColors.Red else MaterialTheme.colorScheme.onSurface
-            )
-        }
+        MetricTile("Boyuna göre sağlıklı kilo aralığı", "${lo.fmt(0)}–${hi.fmt(0)} kg", Modifier.fillMaxWidth())
         HintText("BMI kaslı kişilerde yanıltıcı olabilir; yağ oranı ve bel ölçüsü daha iyi gösterge.")
     }
 }
