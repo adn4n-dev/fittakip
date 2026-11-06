@@ -1,5 +1,6 @@
 package com.fittakip.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -25,7 +26,8 @@ data class FoodEntry(
     val kcal: Int,
     val protein: Double = 0.0,
     val carb: Double = 0.0,
-    val fat: Double = 0.0
+    val fat: Double = 0.0,
+    @ColumnInfo(defaultValue = "SNACK") val meal: String = "SNACK"
 )
 
 /** Antrenman notu: bir set = hareket + ağırlık + tekrar + serbest not. */
@@ -45,4 +47,34 @@ data class BodyWeight(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val epochDay: Long,
     val kg: Double
+)
+
+/** İçilen su (ml). */
+@Entity(tableName = "water")
+data class WaterLog(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val ml: Int
+)
+
+/** Kardiyo oturumu. */
+@Entity(tableName = "cardio")
+data class CardioEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val type: String,
+    val minutes: Int,
+    val kcal: Int
+)
+
+/** Mezura ölçüleri (cm). Girilmeyenler null. */
+@Entity(tableName = "measure")
+data class BodyMeasure(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val waist: Double? = null,
+    val neck: Double? = null,
+    val chest: Double? = null,
+    val arm: Double? = null,
+    val hip: Double? = null
 )

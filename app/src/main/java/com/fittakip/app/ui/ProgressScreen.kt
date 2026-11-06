@@ -34,7 +34,9 @@ private fun verdictColor(v: Verdict): Color = when (v) {
 @Composable
 fun ProgressScreen(vm: AppViewModel) {
     val sets by vm.sets.collectAsStateWithLifecycle()
+    val game by vm.game.collectAsStateWithLifecycle()
     val progress = remember(sets) { ProgressAnalyzer.exercises(sets) }
+    val intensity = remember(sets) { sets.groupBy { it.epochDay }.mapValues { it.value.size } }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -57,6 +59,30 @@ fun ProgressScreen(vm: AppViewModel) {
                     CountCard("Gelişen", progress.count { it.verdict == Verdict.IMPROVING }, FitColors.Lime, Modifier.weight(1f))
                     CountCard("Plato", progress.count { it.verdict == Verdict.PLATEAU }, FitColors.Orange, Modifier.weight(1f))
                     CountCard("Düşen", progress.count { it.verdict == Verdict.DECLINING }, FitColors.Red, Modifier.weight(1f))
+                }
+            }
+            item {
+                SectionCard("Antrenman takvimi", icon = Icons.Rounded.Insights) {
+                    Heatmap(intensity, vm.today)
+                    HintText("Son 12 hafta. Her kare bir gün, renk o günkü set sayısını gösterir.")
+                }
+            }
+            game?.let { g ->
+                val mv = g.thisWeek.muscleVolume.toList().sortedByDescending { it.second }
+                if (mv.isNotEmpty()) {
+                    item {
+                        SectionCard("Bu hafta kas gruplarına hacim", icon = Icons.Rounded.Insights) {
+                            HBars(mv, FitColors.Blue, "kg")
+                            val missing = com.fittakip.app.data.MUSCLES.filter { m -> mv.none { it.first == m } }
+                            if (missing.isNotEmpty()) HintText("Bu hafta çalışılmayan: ${missing.joinToString(", ")}")
+                        }
+                    }
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CountCard("Toplam rekor", g.prCount, FitColors.Orange, Modifier.weight(1f))
+                        CountCard("Ton kaldırdın", (g.totalVolume / 1000).toInt(), FitColors.Lime, Modifier.weight(1f))
+                    }
                 }
             }
             items(progress, key = { it.exercise.lowercase() }) { ExerciseCard(it) }
