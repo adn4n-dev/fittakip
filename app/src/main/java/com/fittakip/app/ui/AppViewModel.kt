@@ -432,6 +432,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun applyPreset(days: List<String>) = store.update { it.copy(weekPlan = days.joinToString(";")) }
 
+    // ---------- Bu haftaya özel gün kaydırma ----------
+
+    private val weekStartNow get() = com.fittakip.app.domain.Gamification.weekStart(today)
+    private fun dayName(d: Long) = WEEKDAY_NAMES[LocalDate.ofEpochDay(d).dayOfWeek.value - 1]
+    private fun label(p: String) = when (p) { OFF_DAY -> "off day"; "" -> "boş"; else -> p }
+
+    /** İki günün planını bu hafta için yer değiştirir (geçmiş günlere dokunulmaz). */
+    fun swapDays(a: Long, b: Long) {
+        val ws = weekStartNow
+        if (a !in today..(ws + 6) || b !in today..(ws + 6) || a == b) return
+        store.update {
+            val m = it.overrides.toMutableMap()
+            val pa = it.planFor(a)
+            val pb = it.planFor(b)
+            m[a] = pb; m[b] = pa
+            it.withOverrides(m)
+        }
+        _msgText = "Bu hafta: ${dayName(a)} ${label(settings.value.planFor(a))}, ${dayName(b)} ${label(settings.value.planFor(b))}. Pazartesi program normale döner."
+    }
+
+    /** [from] gününden itibaren haftanın kalanını 1 gün ileri kaydırır; [from] off day olur. */
+    fun shiftRestOfWeek(from: Long) {
+        val ws = weekStartNow
+        if (from !in today..(ws + 6)) return
+        val st = settings.value
+        val original = (from..(ws + 6)).associateWith { st.planFor(it) }
+        val lost = original[ws + 6]
+        store.update {
+            val m = it.overrides.toMutableMap()
+            m[from] = OFF_DAY
+            for (d in (from + 1)..(ws + 6)) m[d] = original[d - 1] ?: ""
+            it.withOverrides(m)
+        }
+        _msgText = if (lost != null && lost.isNotEmpty() && lost != OFF_DAY && from < ws + 6)
+            "Kaydırıldı. Pazar'daki $lost bu haftaya sığmadı; pazartesi program normale döner."
+        else "Haftanın kalanı 1 gün kaydırıldı. Pazartesi program normale döner."
+    }
+
+    fun setWeekDay(day: Long, value: String) {
+        if (day !in today..(weekStartNow + 6)) return
+        store.update { it.withOverrides(it.overrides + (day to value)) }
+    }
+
+    fun resetWeek() {
+        store.update { it.copy(weekOverrides = "") }
+        _msgText = "Bu haftanın kaydırmaları geri alındı."
+    }
+
     /** Programı günlere bağlı ya da sıralı çalıştır. Sıralı moda geçerken sıra bugünden başlar. */
     fun setPlanMode(rotation: Boolean) = store.update {
         it.copy(planMode = if (rotation) "ROTATION" else "WEEKDAY", rotationStart = if (rotation) today else it.rotationStart)

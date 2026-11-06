@@ -82,7 +82,7 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
         }
         if (g == null) return@LazyColumn
 
-        item { PlanHero(settings, sets, today, onStart = { vm.startTodayWorkout(); onTab(2) }, onSetup = { onOpen(Sub.PROGRAM) }) }
+        item { PlanHero(vm, settings, sets, today, onStart = { vm.startTodayWorkout(); onTab(2) }, onSetup = { onOpen(Sub.PROGRAM) }) }
         item { WeekStrip(settings, g, today) { onOpen(Sub.PROGRAM) } }
         item { StreakCard(g, today) }
         if (shown("QUESTS")) item { QuestsCard(g) }
@@ -110,7 +110,10 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
 
 /** Günün programı: antrenman günü, off day ya da plan yok. */
 @Composable
-private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onStart: () -> Unit, onSetup: () -> Unit) {
+private fun PlanHero(vm: AppViewModel, st: AppSettings, sets: List<WorkoutSet>, today: Long, onStart: () -> Unit, onSetup: () -> Unit) {
+    var shiftDialog by remember { mutableStateOf(false) }
+    val canShift = !st.rotation && st.hasPlan
+    val shifted = canShift && st.isShifted(today)
     val dow = LocalDate.ofEpochDay(today).dayOfWeek.value - 1
     val dayName = WEEKDAY_NAMES[dow]
     val dayPlan = com.fittakip.app.domain.PlanResolver.forDay(st, sets, today)
@@ -127,7 +130,13 @@ private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onSta
             OFF_DAY_TIPS.shuffled(java.util.Random(today)).take(3).forEach {
                 Text("• $it", color = dark, style = MaterialTheme.typography.bodyMedium)
             }
+            if (shifted) Text("↪ Bu hafta için kaydırıldı (normalde ${planLabel(st.basePlanFor(today))})", color = dark, style = MaterialTheme.typography.labelLarge)
             nextWorkout(st, sets, today)?.let { (d, n) -> Text("Sıradaki: $d · $n", color = darkMuted, style = MaterialTheme.typography.labelLarge) }
+            if (canShift && sets.none { it.epochDay == today && it.counted() }) {
+                TextButton(onClick = { shiftDialog = true }, colors = ButtonDefaults.textButtonColors(contentColor = dark)) {
+                    Text("Bugün antrenman yapmak istiyorum →", fontWeight = FontWeight.Bold)
+                }
+            }
         }
         tpl != null -> GlowCard {
             val todayTrained = sets.any { it.epochDay == today && it.counted() }
@@ -136,6 +145,7 @@ private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onSta
                 color = darkMuted, style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp
             )
             Text(if (st.rotation) "${tpl.name} 💪" else "${tpl.name} günü 💪", color = dark, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 36.sp))
+            if (shifted) Text("↪ Bu hafta için kaydırıldı (normalde ${planLabel(st.basePlanFor(today))})", color = dark, style = MaterialTheme.typography.labelLarge)
             if (st.rotation && !todayTrained && since == 1) {
                 Text("Dün antrenman yaptın. İstersen bugün dinlen; sıra kaymaz, yarın ${tpl.name} seni bekler.", color = dark, style = MaterialTheme.typography.bodyMedium)
             }
@@ -172,6 +182,11 @@ private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onSta
                 Spacer(Modifier.width(6.dp))
                 Text(if (doneCount == 0) "Antrenmana başla" else "Antrenmana devam et", fontWeight = FontWeight.ExtraBold)
             }
+            if (canShift && doneCount == 0 && todaySets.isEmpty()) {
+                TextButton(onClick = { shiftDialog = true }, colors = ButtonDefaults.textButtonColors(contentColor = dark), modifier = Modifier.fillMaxWidth()) {
+                    Text("Bugün gidemiyorum, kaydır", fontWeight = FontWeight.Bold)
+                }
+            }
         }
         else -> FitCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -188,6 +203,55 @@ private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onSta
             PrimaryButton(if (st.hasPlan) "Programı düzenle" else "Program oluştur", onClick = onSetup, icon = Icons.Rounded.CalendarMonth)
         }
     }
+    if (shiftDialog) ShiftDialog(vm, st, today, isOff = dayPlan is com.fittakip.app.domain.DayPlan.Off || tpl == null) { shiftDialog = false }
+}
+
+private fun planLabel(p: String) = when (p) { OFF_DAY -> "off day"; "" -> "boş"; else -> p }
+
+/** Bu haftaya özel kaydırma: bugünü başka bir günle değiştir ya da haftanın kalanını 1 gün ileri at. */
+@Composable
+private fun ShiftDialog(vm: AppViewModel, st: AppSettings, today: Long, isOff: Boolean, onDismiss: () -> Unit) {
+    val end = Gamification.weekStart(today) + 6
+    val rest = ((today + 1)..end).toList()
+    val options = if (isOff) rest.filter { st.planFor(it).let { p -> p.isNotEmpty() && p != OFF_DAY } } else rest
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        title = { Text(if (isOff) "Bugün hangi antrenmanı yapalım?" else "Bugünkü antrenmanı nereye kaydıralım?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                HintText("Sadece bu hafta için geçerli. Pazartesi program normale döner.")
+                if (options.isEmpty()) HintText(if (isOff) "Bu hafta kalan antrenman yok." else "Bu hafta kaydıracak gün kalmadı.")
+                options.forEach { d ->
+                    val name = WEEKDAY_NAMES[LocalDate.ofEpochDay(d).dayOfWeek.value - 1]
+                    val p = st.planFor(d)
+                    Surface(
+                        onClick = { vm.swapDays(today, d); onDismiss() },
+                        shape = RoundedCornerShape(14.dp), color = Color.White.copy(alpha = 0.06f), modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(name + if (d == today + 1) " (yarın)" else "", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            Text(if (isOff) p else "yer değiştir · ${planLabel(p)}", style = MaterialTheme.typography.labelLarge,
+                                color = if (p == OFF_DAY || p.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else FitColors.Lime)
+                        }
+                    }
+                }
+                if (!isOff && rest.isNotEmpty()) {
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    Surface(
+                        onClick = { vm.shiftRestOfWeek(today); onDismiss() },
+                        shape = RoundedCornerShape(14.dp), color = FitColors.Lime.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Haftanın kalanını 1 gün kaydır", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
+                            HintText("Bugün off olur, her antrenman bir sonraki güne geçer.")
+                        }
+                    }
+                }
+            }
+        }
+    )
 }
 
 private fun nextWorkout(st: AppSettings, sets: List<WorkoutSet>, today: Long): Pair<String, String>? {
@@ -210,7 +274,7 @@ private fun WeekStrip(st: AppSettings, g: GameState, today: Long, onClick: () ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (i in 0..6) {
                 val day = ws + i
-                val p = if (st.rotation) (if (day in g.thisWeekTrainDays) "✓" else "") else st.plan[i]
+                val p = if (st.rotation) (if (day in g.thisWeekTrainDays) "✓" else "") else st.planFor(day)
                 val isToday = day == today
                 val trained = day in g.thisWeekTrainDays
                 val label = when {
@@ -218,7 +282,7 @@ private fun WeekStrip(st: AppSettings, g: GameState, today: Long, onClick: () ->
                     p == OFF_DAY -> "Off"
                     p.isEmpty() -> "—"
                     else -> p.take(4)
-                }
+                }.let { if (!st.rotation && st.isShifted(day)) "↪$it" else it }
                 Column(
                     Modifier
                         .weight(1f)

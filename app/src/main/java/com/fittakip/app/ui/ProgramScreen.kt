@@ -29,6 +29,7 @@ fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val sets by vm.sets.collectAsStateWithLifecycle()
     var editingDay by rememberSaveable { mutableStateOf<Int?>(null) }
+    var weekEditing by rememberSaveable { mutableStateOf<Long?>(null) }
     var newTemplate by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<com.fittakip.app.data.WorkoutTemplate?>(null) }
     val todayIdx = LocalDate.now().dayOfWeek.value - 1
@@ -92,9 +93,51 @@ fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
 
+        if (!settings.rotation && settings.hasPlan) item {
+            val today = vm.today
+            val ws = com.fittakip.app.domain.Gamification.weekStart(today)
+            SectionCard("Bu hafta") {
+                HintText("Sadece bu haftayı değiştirir; asıl programın aynı kalır, pazartesi her şey normale döner. Bugün ya da sonraki bir güne dokun.")
+                (0..6).forEach { i ->
+                    val d = ws + i
+                    val v = settings.planFor(d)
+                    val past = d < today
+                    val shifted = settings.isShifted(d)
+                    Surface(
+                        onClick = { if (!past) weekEditing = if (weekEditing == d) null else d },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (d == today) FitColors.Lime.copy(alpha = 0.10f) else Color.White.copy(alpha = if (past) 0.02f else 0.04f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(WEEKDAY_NAMES[i] + if (d == today) " · bugün" else "", style = MaterialTheme.typography.titleSmall,
+                                    color = if (past) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f))
+                                if (shifted) Text("↪ ", color = FitColors.Lime)
+                                Pill(
+                                    when { v == OFF_DAY -> "Off 😌"; v.isEmpty() -> "—"; else -> v },
+                                    when { past -> MaterialTheme.colorScheme.onSurfaceVariant; v == OFF_DAY -> Color(0xFF8E9BFF); v.isEmpty() -> MaterialTheme.colorScheme.onSurfaceVariant; else -> FitColors.Lime }
+                                )
+                            }
+                            if (weekEditing == d) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Pill("😌 Off day", Color(0xFF8E9BFF), onClick = { vm.setWeekDay(d, OFF_DAY); weekEditing = null })
+                                    templates.forEach { t ->
+                                        Pill(t.name, if (t.name == v) FitColors.Lime else MaterialTheme.colorScheme.onSurface, onClick = { vm.setWeekDay(d, t.name); weekEditing = null })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (settings.overrides.isNotEmpty()) TextButton(onClick = { vm.resetWeek() }) { Text("Bu haftayı normale döndür") }
+            }
+        }
+
         item {
-            SectionCard("Günler", icon = Icons.Rounded.CalendarMonth) {
-                HintText("Bir güne dokun ve antrenman ya da off day seç.")
+            SectionCard(if (settings.rotation) "Günler" else "Asıl program (her hafta)", icon = Icons.Rounded.CalendarMonth) {
+                HintText("Bir güne dokun ve antrenman ya da off day seç. Bu, her haftayı değiştirir.")
                 WEEKDAY_NAMES.forEachIndexed { i, name ->
                     val v = settings.plan[i]
                     val tpl = templates.firstOrNull { it.name == v }

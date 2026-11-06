@@ -345,7 +345,7 @@ object Gamification {
 
         // Programın tamamen uygulandığı haftalar
         val planWeeks = if (!st.hasPlan) 0 else generateSequence(weekStart(firstDay)) { it + 7 }.takeWhile { it + 6 < today + 1 }.count { ws ->
-            val trainDays = (0..6).filter { st.plan[it].isNotEmpty() && st.plan[it] != com.fittakip.app.data.OFF_DAY }
+            val trainDays = (0..6).filter { i -> st.planFor(ws + i).let { it.isNotEmpty() && it != com.fittakip.app.data.OFF_DAY } }
             if (st.rotation) {
                 // Sıralı modda: o hafta antrenman günü sayısı plandaki antrenman sayısına ulaştı mı
                 trainDays.isNotEmpty() && d.workSets.filter { it.epochDay in ws..(ws + 6) }.map { it.epochDay }.toSet().size >= trainDays.size

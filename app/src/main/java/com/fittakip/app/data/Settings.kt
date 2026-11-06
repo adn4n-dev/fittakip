@@ -39,8 +39,22 @@ data class AppSettings(
     val unavailable: Set<String> = emptySet(),      // salonda olmayan makineler
     val machineNotes: String = "{}",                 // {"Leg Press": "koltuk 4, ayak üstte"}
     val autoBackupUri: String = "",                  // kullanıcının seçtiği klasör
-    val lastAutoBackup: Long = 0
+    val lastAutoBackup: Long = 0,
+    val weekOverrides: String = ""                   // "20400=Upper A;20401=OFF" — sadece içinde bulunulan hafta
 ) {
+    /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
+    val overrides: Map<Long, String>
+        get() {
+            val ws = java.time.LocalDate.now().with(java.time.DayOfWeek.MONDAY).toEpochDay()
+            return weekOverrides.split(";").mapNotNull { part ->
+                val d = part.substringBefore("=").toLongOrNull() ?: return@mapNotNull null
+                if (d < ws || d > ws + 6) null else d to part.substringAfter("=", "")
+            }.toMap()
+        }
+
+    fun withOverrides(m: Map<Long, String>): AppSettings =
+        copy(weekOverrides = m.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value}" })
+
     fun isAvailable(exercise: String) = unavailable.none { it.equals(exercise.trim(), true) }
 
     fun machineNote(exercise: String): String =
@@ -86,7 +100,13 @@ data class AppSettings(
         }
 
     /** epochDay için plandaki şablon adı; "" plan yok, OFF_DAY dinlenme günü. */
-    fun planFor(epochDay: Long): String = plan[java.time.LocalDate.ofEpochDay(epochDay).dayOfWeek.value - 1]
+    /** Programdaki asıl plan (bu haftanın kaydırmaları hariç). */
+    fun basePlanFor(epochDay: Long): String = plan[java.time.LocalDate.ofEpochDay(epochDay).dayOfWeek.value - 1]
+
+    /** O günün geçerli planı: bu hafta kaydırıldıysa kaydırılmış hali. */
+    fun planFor(epochDay: Long): String = overrides[epochDay] ?: basePlanFor(epochDay)
+
+    fun isShifted(epochDay: Long): Boolean = overrides[epochDay]?.let { it != basePlanFor(epochDay) } ?: false
 
     fun templateFor(epochDay: Long): WorkoutTemplate? = planFor(epochDay).let { n -> allTemplates.firstOrNull { it.name == n } }
 }
@@ -134,7 +154,8 @@ class SettingsStore(context: Context) {
         unavailable = set("unavailable", emptySet()),
         machineNotes = prefs.getString("machineNotes", "{}") ?: "{}",
         autoBackupUri = prefs.getString("autoBackupUri", "") ?: "",
-        lastAutoBackup = prefs.getLong("lastAutoBackup", 0)
+        lastAutoBackup = prefs.getLong("lastAutoBackup", 0),
+        weekOverrides = prefs.getString("weekOverrides", "") ?: ""
     )
 
     @Synchronized
@@ -176,6 +197,7 @@ class SettingsStore(context: Context) {
             .putString("machineNotes", s.machineNotes)
             .putString("autoBackupUri", s.autoBackupUri)
             .putLong("lastAutoBackup", s.lastAutoBackup)
+            .putString("weekOverrides", s.weekOverrides)
             .apply()
         _state.value = s
     }
