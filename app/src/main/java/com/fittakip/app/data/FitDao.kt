@@ -158,6 +158,9 @@ interface FitDao {
     @Query("SELECT epochDay FROM workout_set UNION SELECT epochDay FROM food UNION SELECT epochDay FROM body_weight UNION SELECT epochDay FROM cardio")
     suspend fun streakDays(): List<Long>
 
+    @Query("SELECT * FROM workout_set WHERE epochDay >= :from")
+    suspend fun setsSince(from: Long): List<WorkoutSet>
+
     // Widget için
     @Query("SELECT COALESCE(SUM(kcal), 0) FROM food WHERE epochDay = :day")
     suspend fun kcalOn(day: Long): Int

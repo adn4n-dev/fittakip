@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.material.icons.rounded.Straighten
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,6 +54,8 @@ fun BodyScreen(vm: AppViewModel) {
     val trend = remember(weights, profile) { ProgressAnalyzer.analyzeWeight(weights, profile?.targetWeightKg, goal) }
     var input by rememberSaveable { mutableStateOf("") }
     var measureOpen by rememberSaveable { mutableStateOf(false) }
+    var picker by remember { mutableStateOf(false) }
+    fun show(id: String) = id !in settings.hiddenSections
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -90,7 +93,7 @@ fun BodyScreen(vm: AppViewModel) {
 
         // Akıllı kalori ayarı
         trend?.let { t ->
-            item {
+            if (show("B_ADVICE")) item {
                 FitCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBadge(Icons.Rounded.Lightbulb, FitColors.Orange, 36.dp)
@@ -123,7 +126,7 @@ fun BodyScreen(vm: AppViewModel) {
                 }
             }
             if (t.history.size >= 2) {
-                item {
+                if (show("B_CHART")) item {
                     SectionCard("Kilo grafiği", icon = Icons.Rounded.Insights) {
                         TrendChart(t.history, t.fit, t.fitStartDay)
                     }
@@ -133,13 +136,13 @@ fun BodyScreen(vm: AppViewModel) {
 
         // BMI ve yağ oranı
         if (profile != null) {
-            item { CompositionCard(profile, weights.lastOrNull()?.kg ?: profile.weightKg, measures.lastOrNull()) }
+            if (show("B_COMPOSITION")) item { CompositionCard(profile, weights.lastOrNull()?.kg ?: profile.weightKg, measures.lastOrNull()) }
         }
 
-        item { PhotosCard(vm) }
+        if (show("B_PHOTOS")) item { PhotosCard(vm) }
 
         // Ölçüler
-        item {
+        if (show("B_MEASURES")) item {
             if (measureOpen) {
                 MeasureForm(onClose = { measureOpen = false }) {
                     vm.addMeasure(it)
@@ -151,11 +154,15 @@ fun BodyScreen(vm: AppViewModel) {
         }
 
         if (weights.isNotEmpty()) {
-            item { Text("Tartı geçmişi", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
+            if (show("B_HISTORY")) item { Text("Tartı geçmişi", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
         }
         val rows = weights.mapIndexed { i, w -> w to (if (i > 0) w.kg - weights[i - 1].kg else null) }.reversed().take(30)
-        items(rows, key = { it.first.id }) { (w, delta) -> WeightRow(w, delta) { vm.deleteWeight(w) } }
+        if (show("B_HISTORY")) items(rows, key = { it.first.id }) { (w, delta) -> WeightRow(w, delta) { vm.deleteWeight(w) } }
+        item { SecondaryButton("Kartları düzenle", onClick = { picker = true }, icon = Icons.Rounded.Tune, modifier = Modifier.fillMaxWidth()) }
     }
+    if (picker) CardPicker("Vücut kartları", BODY_CARDS, settings.hiddenSections, onToggle = { id, on ->
+        vm.updateSettings { it.copy(hiddenSections = if (on) it.hiddenSections - id else it.hiddenSections + id) }
+    }) { picker = false }
 }
 
 @Composable

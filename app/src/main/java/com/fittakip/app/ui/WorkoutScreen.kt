@@ -1,5 +1,6 @@
 package com.fittakip.app.ui
 
+import com.fittakip.app.data.counted
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -62,6 +63,9 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     var showAllHistory by rememberSaveable { mutableStateOf(false) }
     var warmup by rememberSaveable { mutableStateOf(false) }
     var rpe by rememberSaveable { mutableStateOf<Double?>(null) }
+    var drop by rememberSaveable { mutableStateOf(false) }
+    var dropKg by rememberSaveable { mutableStateOf("") }
+    var dropReps by rememberSaveable { mutableStateOf("") }
     var newTemplate by rememberSaveable { mutableStateOf(false) }
     var library by rememberSaveable { mutableStateOf(false) }
 
@@ -75,10 +79,11 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     }
 
     val allTemplates = settings.allTemplates
-    val planned = settings.templateFor(wDay)
-    val isOff = settings.planFor(wDay) == com.fittakip.app.data.OFF_DAY
+    val dayPlan = remember(settings, sets, wDay) { com.fittakip.app.domain.PlanResolver.forDay(settings, sets, wDay) }
+    val planned = (dayPlan as? com.fittakip.app.domain.DayPlan.Workout)?.template
+    val isOff = dayPlan is com.fittakip.app.domain.DayPlan.Off
     val template = allTemplates.firstOrNull { it.name == settings.activeTemplate } ?: planned
-    val daySets = sets.filter { it.epochDay == wDay && !it.warmup }
+    val daySets = sets.filter { it.epochDay == wDay && it.counted() }
     fun doneSets(ex: String) = daySets.count { it.exercise.trim().equals(ex, true) }
     val lastToday = sets.firstOrNull { it.epochDay == wDay && it.exercise.trim().equals(exercise.trim(), true) }
 
@@ -222,6 +227,27 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         SelectCard(rpe == r, { rpe = if (rpe == r) null else r }, r.clean(), Modifier.weight(1f))
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = drop, onCheckedChange = {
+                        drop = it
+                        if (it && dropKg.isBlank()) {
+                            // Varsayılan: ağırlığın ~%25 azı, aynı tekrar
+                            dropKg = ((kg.toNum() ?: 0.0) * 0.75 / 2.5).let { v -> kotlin.math.round(v) * 2.5 }.clean()
+                            dropReps = reps
+                        }
+                    })
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Drop set ekle", style = MaterialTheme.typography.titleSmall)
+                        HintText("Setin hemen ardından düşük ağırlıkla devam. Hedef sete sayılmaz, hacme sayılır.")
+                    }
+                }
+                if (drop) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Stepper(dropKg, { dropKg = it }, "↓ Drop ağırlık", 2.5, Modifier.weight(1f))
+                        Stepper(dropReps, { dropReps = it }, "↓ Drop tekrar", 1.0, Modifier.weight(1f))
+                    }
+                }
                 TextInput(note, { note = it }, "Not (ops.): form, his…", singleLine = false)
 
                 val w = kg.toNum()
@@ -243,6 +269,12 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         val group = if (!warmup && cur != null && cur.superset > 0) template.items.filter { it.superset == cur.superset } else emptyList()
                         val isFirst = group.size == 2 && group[0].exercise.equals(cur?.exercise, true)
                         vm.addSet(exercise.trim(), w!!, r!!, note.trim(), warmup, rpe, if (isFirst) 15 else null)
+                        val dk = dropKg.toNum()
+                        val dr = dropReps.toNum()?.toInt()
+                        if (drop && dk != null && dr != null && dr > 0) {
+                            vm.addSet(exercise.trim(), dk, dr, "", false, null, if (isFirst) 15 else null, isDrop = true)
+                            drop = false
+                        }
                         if (group.size == 2) {
                             val partner = if (isFirst) group[1] else group[0]
                             if (doneSets(partner.exercise) < partner.sets) pick(partner.exercise)
@@ -341,6 +373,7 @@ private fun RestTimer(end: Long, vm: AppViewModel) {
                 )
             }
             ProgressBar((left.toFloat() / total).coerceIn(0f, 1f), FitColors.Lime)
+            ExactAlarmHint()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SecondaryButton("+30 sn", onClick = { vm.addRest(30) }, modifier = Modifier.weight(1f))
                 SecondaryButton("Atla", onClick = { vm.stopRest() }, modifier = Modifier.weight(1f))
@@ -383,7 +416,7 @@ private fun DayCard(
     onExercise: (String) -> Unit
 ) {
     val byExercise = sets.groupBy { it.exercise.trim() }
-    val volume = sets.filter { !it.warmup }.sumOf { it.weightKg * it.reps }
+    val volume = sets.filter { it.counted() }.sumOf { it.weightKg * it.reps }
     FitCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -406,14 +439,14 @@ private fun DayCard(
                     )
                     Text(
                         if (Stats.isTimed(name) || ordered.all { it.weightKg == 0.0 }) "en iyi ${ordered.maxOf { it.reps }} ${if (Stats.isTimed(name)) "sn" else "tekrar"}"
-                        else "≈1RM ${(ordered.filter { !it.warmup }.ifEmpty { ordered }).maxOf { Stats.epley1RM(it.weightKg, it.reps) }.fmt()} kg",
+                        else "≈1RM ${(ordered.filter { it.counted() }.ifEmpty { ordered }).maxOf { Stats.epley1RM(it.weightKg, it.reps) }.fmt()} kg",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ordered.forEach { s ->
                         Pill(
-                            (if (s.warmup) "ı " else "") + "${s.weightKg.clean()} × ${s.reps}" + (s.rpe?.let { " @${it.clean()}" } ?: ""),
+                            (if (s.warmup) "ı " else "") + (if (s.isDrop) "↓ " else "") + "${s.weightKg.clean()} × ${s.reps}" + (s.rpe?.let { " @${it.clean()}" } ?: ""),
                             if (s.warmup) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                             onClick = { onSetClick(s) }
                         )
@@ -530,4 +563,32 @@ private fun EditSetDialog(s: WorkoutSet, onDismiss: () -> Unit, onSave: (Workout
         dismissButton = { TextButton(onClick = onDelete) { Text("Sil", color = MaterialTheme.colorScheme.error) } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     )
+}
+
+
+/** Android 12+ : tam zamanlı alarm izni yoksa dinlenme titreşimi gecikebilir; izin sayfasını aç. */
+@Composable
+fun ExactAlarmHint() {
+    if (android.os.Build.VERSION.SDK_INT < 31) return
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val am = ctx.getSystemService(android.app.AlarmManager::class.java)
+    var allowed by remember { mutableStateOf(am.canScheduleExactAlarms()) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) allowed = am.canScheduleExactAlarms()
+        }
+        lifecycle.lifecycle.addObserver(obs)
+        onDispose { lifecycle.lifecycle.removeObserver(obs) }
+    }
+    if (allowed) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        HintText("⚠️ Telefon kilitliyken titreşim gecikebilir. Tam zamanlı alarm iznini aç.", Modifier.weight(1f))
+        TextButton(onClick = {
+            ctx.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:" + ctx.packageName))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }) { Text("İzin ver") }
+    }
 }

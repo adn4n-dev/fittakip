@@ -1,5 +1,6 @@
 package com.fittakip.app.ui
 
+import com.fittakip.app.data.counted
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -134,25 +135,36 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
 private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onStart: () -> Unit, onSetup: () -> Unit) {
     val dow = LocalDate.ofEpochDay(today).dayOfWeek.value - 1
     val dayName = WEEKDAY_NAMES[dow]
-    val plan = st.planFor(today)
-    val tpl = st.templateFor(today)
+    val dayPlan = com.fittakip.app.domain.PlanResolver.forDay(st, sets, today)
+    val tpl = (dayPlan as? com.fittakip.app.domain.DayPlan.Workout)?.template
+    val since = com.fittakip.app.domain.PlanResolver.daysSinceLastWorkout(sets, today)
     val dark = Color(0xFF0E1200)
     val darkMuted = Color(0xFF0E1200).copy(alpha = 0.65f)
 
     when {
-        plan == OFF_DAY -> GlowCard(colors = listOf(Color(0xFF8E9BFF), Color(0xFF4DE1E1))) {
+        dayPlan is com.fittakip.app.domain.DayPlan.Off -> GlowCard(colors = listOf(Color(0xFF8E9BFF), Color(0xFF4DE1E1))) {
             Text(dayName.uppercase(), color = darkMuted, style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp)
             Text("Off day 😌", color = dark, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 36.sp))
             Text("Bugün antrenman yok. Kaslar dinlenirken büyür.", color = dark, style = MaterialTheme.typography.bodyLarge)
             OFF_DAY_TIPS.shuffled(java.util.Random(today)).take(3).forEach {
                 Text("• $it", color = dark, style = MaterialTheme.typography.bodyMedium)
             }
-            nextWorkout(st, today)?.let { (d, n) -> Text("Sıradaki: $d · $n", color = darkMuted, style = MaterialTheme.typography.labelLarge) }
+            nextWorkout(st, sets, today)?.let { (d, n) -> Text("Sıradaki: $d · $n", color = darkMuted, style = MaterialTheme.typography.labelLarge) }
         }
         tpl != null -> GlowCard {
-            Text(dayName.uppercase(), color = darkMuted, style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp)
-            Text("${tpl.name} günü 💪", color = dark, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 36.sp))
-            val todaySets = sets.filter { it.epochDay == today && !it.warmup }
+            val todayTrained = sets.any { it.epochDay == today && it.counted() }
+            Text(
+                if (st.rotation) "SIRADAKİ ANTRENMANIN" else dayName.uppercase(),
+                color = darkMuted, style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp
+            )
+            Text(if (st.rotation) "${tpl.name} 💪" else "${tpl.name} günü 💪", color = dark, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 36.sp))
+            if (st.rotation && !todayTrained && since == 1) {
+                Text("Dün antrenman yaptın. İstersen bugün dinlen; sıra kaymaz, yarın ${tpl.name} seni bekler.", color = dark, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (st.rotation && !todayTrained && since != null && since >= 4) {
+                Text("Son antrenmandan bu yana $since gün geçti. Bugün başlamak için harika bir gün!", color = dark, style = MaterialTheme.typography.bodyMedium)
+            }
+            val todaySets = sets.filter { it.epochDay == today && it.counted() }
             val doneCount = tpl.items.count { i -> todaySets.count { it.exercise.equals(i.exercise, true) } >= i.sets }
             Text("Bugünkü görevin · $doneCount/${tpl.items.size} tamam", color = darkMuted, style = MaterialTheme.typography.labelLarge)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -200,7 +212,8 @@ private fun PlanHero(st: AppSettings, sets: List<WorkoutSet>, today: Long, onSta
     }
 }
 
-private fun nextWorkout(st: AppSettings, today: Long): Pair<String, String>? {
+private fun nextWorkout(st: AppSettings, sets: List<WorkoutSet>, today: Long): Pair<String, String>? {
+    if (st.rotation) return com.fittakip.app.domain.PlanResolver.templateFor(st, sets, today)?.let { "Sıradaki" to it.name }
     for (i in 1..7) {
         val d = today + i
         val t = st.templateFor(d) ?: continue
@@ -219,10 +232,11 @@ private fun WeekStrip(st: AppSettings, g: GameState, today: Long, onClick: () ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (i in 0..6) {
                 val day = ws + i
-                val p = st.plan[i]
+                val p = if (st.rotation) (if (day in g.thisWeekTrainDays) "✓" else "") else st.plan[i]
                 val isToday = day == today
                 val trained = day in g.thisWeekTrainDays
                 val label = when {
+                    st.rotation -> if (trained) "yapıldı" else if (isToday) "bugün" else ""
                     p == OFF_DAY -> "Off"
                     p.isEmpty() -> "—"
                     else -> p.take(4)

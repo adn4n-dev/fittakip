@@ -40,8 +40,12 @@ data class WorkoutSet(
     val reps: Int,
     val note: String = "",
     @ColumnInfo(defaultValue = "0") val warmup: Boolean = false,
-    val rpe: Double? = null
+    val rpe: Double? = null,
+    @ColumnInfo(defaultValue = "0") val isDrop: Boolean = false
 )
+
+/** Isınma ve drop setleri hedef sete, rekora ve 1RM analizine sayılmaz. */
+fun WorkoutSet.counted(): Boolean = !warmup && !isDrop
 
 /** Vücut ağırlığı (tartı) kaydı. */
 @Entity(tableName = "body_weight")

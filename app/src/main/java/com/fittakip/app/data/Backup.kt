@@ -28,7 +28,7 @@ object Backup {
         root.put("sets", JSONArray().apply {
             d.dumpSets().forEach {
                 put(JSONObject().put("day", it.epochDay).put("ex", it.exercise).put("kg", it.weightKg)
-                    .put("reps", it.reps).put("note", it.note).put("warmup", it.warmup).put("rpe", it.rpe ?: JSONObject.NULL))
+                    .put("reps", it.reps).put("note", it.note).put("warmup", it.warmup).put("drop", it.isDrop).put("rpe", it.rpe ?: JSONObject.NULL))
             }
         })
         root.put("weights", JSONArray().apply {
@@ -98,7 +98,7 @@ object Backup {
         val sets = root.optJSONArray("sets").mapObjects {
             WorkoutSet(epochDay = it.getLong("day"), exercise = normalizeExercise(it.getString("ex")), weightKg = it.getDouble("kg"),
                 reps = it.getInt("reps"), note = it.optString("note", ""),
-                warmup = it.optBoolean("warmup", false), rpe = it.optD("rpe"))
+                warmup = it.optBoolean("warmup", false), rpe = it.optD("rpe"), isDrop = it.optBoolean("drop", false))
         }
         val weights = root.optJSONArray("weights").mapObjects { BodyWeight(epochDay = it.getLong("day"), kg = it.getDouble("kg")) }
         val water = root.optJSONArray("water").mapObjects { WaterLog(epochDay = it.getLong("day"), ml = it.getInt("ml")) }

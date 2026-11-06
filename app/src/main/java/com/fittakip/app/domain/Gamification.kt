@@ -1,5 +1,6 @@
 package com.fittakip.app.domain
 
+import com.fittakip.app.data.counted
 import com.fittakip.app.data.AppSettings
 import com.fittakip.app.data.BodyMeasure
 import com.fittakip.app.data.BodyWeight
@@ -35,7 +36,7 @@ data class AllData(
     val photos: List<ProgressPhoto> = emptyList()
 ) {
     /** Isınma setleri hacme ve rekorlara sayılmaz. */
-    val workSets: List<WorkoutSet> get() = sets.filter { !it.warmup }
+    val workSets: List<WorkoutSet> get() = sets.filter { it.counted() }
 }
 
 data class Achievement(
@@ -160,7 +161,7 @@ object Gamification {
     /** Bir hareketin günlük en iyi 1RM'i önceki tüm günlerden yüksekse = rekor. */
     fun prDays(sets: List<WorkoutSet>, bw: Double = 0.0): List<Pair<Long, String>> {
         val result = mutableListOf<Pair<Long, String>>()
-        sets.filter { !it.warmup && !Stats.isTimed(it.exercise) }.groupBy { it.exercise.trim().lowercase() }.values.forEach { list ->
+        sets.filter { it.counted() && !Stats.isTimed(it.exercise) }.groupBy { it.exercise.trim().lowercase() }.values.forEach { list ->
             var best = 0.0
             list.groupBy { it.epochDay }.toSortedMap().forEach { (day, ds) ->
                 val dayBest = ds.maxOf { Stats.e1rm(it, bw) }
@@ -210,15 +211,15 @@ object Gamification {
         val water = d.water.filter { it.epochDay == day }.sumOf { it.ml }
         val protein = foods.sumOf { it.protein }
         val kcal = foods.sumOf { it.kcal }
-        val daySets = d.sets.filter { it.epochDay == day && !it.warmup }
+        val daySets = d.sets.filter { it.epochDay == day && it.counted() }
         val list = mutableListOf(
             Quest("Öğünlerini kaydet", "En az 3 yemek gir (${foods.size}/3)", foods.size >= 3),
             Quest("Su hedefini tamamla", "$water / $waterGoal ml", water >= waterGoal)
         )
-        val planName = st.planFor(day)
-        val tpl = st.templateFor(day)
+        val dayPlan = PlanResolver.forDay(st, d.sets, day)
+        val tpl = (dayPlan as? DayPlan.Workout)?.template
         list += when {
-            planName == com.fittakip.app.data.OFF_DAY -> {
+            dayPlan is DayPlan.Off -> {
                 val steps = d.habits.lastOrNull { it.epochDay == day && it.type == "STEPS" }?.value ?: 0.0
                 val cardioMin = d.cardio.filter { it.epochDay == day }.sumOf { it.minutes }
                 Quest("Aktif dinlenme", "20 dk hafif kardiyo ya da 6.000 adım", cardioMin >= 20 || steps >= 6000)
@@ -398,7 +399,10 @@ object Gamification {
         // Programın tamamen uygulandığı haftalar
         val planWeeks = if (!st.hasPlan) 0 else generateSequence(weekStart(firstDay)) { it + 7 }.takeWhile { it + 6 < today + 1 }.count { ws ->
             val trainDays = (0..6).filter { st.plan[it].isNotEmpty() && st.plan[it] != com.fittakip.app.data.OFF_DAY }
-            trainDays.isNotEmpty() && trainDays.all { i -> d.workSets.any { it.epochDay == ws + i } }
+            if (st.rotation) {
+                // Sıralı modda: o hafta antrenman günü sayısı plandaki antrenman sayısına ulaştı mı
+                trainDays.isNotEmpty() && d.workSets.filter { it.epochDay in ws..(ws + 6) }.map { it.epochDay }.toSet().size >= trainDays.size
+            } else trainDays.isNotEmpty() && trainDays.all { i -> d.workSets.any { it.epochDay == ws + i } }
         }
 
         val achievements = listOf(

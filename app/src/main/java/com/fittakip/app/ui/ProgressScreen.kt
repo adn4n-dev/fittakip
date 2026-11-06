@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,6 +40,9 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val progress = remember(sets, bwNow) { ProgressAnalyzer.exercises(sets, bwNow) }
     val intensity = remember(sets) { sets.groupBy { it.epochDay }.mapValues { it.value.size } }
     val state by vm.profile.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    var picker by remember { mutableStateOf(false) }
+    fun show(id: String) = id !in settings.hiddenSections
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -56,14 +60,14 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                 )
             }
         } else {
-            item {
+            if (show("P_COUNTS")) item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CountCard("Gelişen", progress.count { it.verdict == Verdict.IMPROVING }, FitColors.Lime, Modifier.weight(1f))
                     CountCard("Plato", progress.count { it.verdict == Verdict.PLATEAU }, FitColors.Orange, Modifier.weight(1f))
                     CountCard("Düşen", progress.count { it.verdict == Verdict.DECLINING }, FitColors.Red, Modifier.weight(1f))
                 }
             }
-            item {
+            if (show("P_HEATMAP")) item {
                 SectionCard("Antrenman takvimi", icon = Icons.Rounded.Insights) {
                     Heatmap(intensity, vm.today)
                     HintText("Son 12 hafta. Her kare bir gün, renk o günkü set sayısını gösterir.")
@@ -72,7 +76,7 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
             game?.let { g ->
                 val mv = g.thisWeek.muscleVolume.toList().sortedByDescending { it.second }
                 if (mv.isNotEmpty()) {
-                    item {
+                    if (show("P_MUSCLE")) item {
                         SectionCard("Bu hafta kas gruplarına hacim", icon = Icons.Rounded.Insights) {
                             HBars(mv, FitColors.Blue, "kg")
                             val missing = com.fittakip.app.data.MUSCLES.filter { m -> mv.none { it.first == m } }
@@ -80,7 +84,7 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         }
                     }
                 }
-                item {
+                if (show("P_TOTALS")) item {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         CountCard("Toplam rekor", g.prCount, FitColors.Orange, Modifier.weight(1f))
                         CountCard("Ton kaldırdın", (g.totalVolume / 1000).toInt(), FitColors.Lime, Modifier.weight(1f))
@@ -90,7 +94,7 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
             // Deload önerisi
             val stuck = progress.count { it.verdict == Verdict.PLATEAU || it.verdict == Verdict.DECLINING }
             if (progress.count { it.fit != null } >= 3 && stuck >= (progress.count { it.fit != null } + 1) / 2) {
-                item {
+                if (show("P_DELOAD")) item {
                     SectionCard("Deload haftası zamanı olabilir 🛌") {
                         Text("Hareketlerinin çoğu platoda ya da düşüşte ($stuck / ${progress.count { it.fit != null }}).", style = MaterialTheme.typography.bodyMedium)
                         HintText("Bir hafta ağırlıkları %40-50 azalt, set sayısını yarıya indir. Vücut toparlanınca genelde rekorlar geri gelir.")
@@ -100,7 +104,7 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
             game?.let { g ->
                 val ms = g.thisWeek.muscleSets
                 if (ms.isNotEmpty()) {
-                    item {
+                    if (show("P_SETS")) item {
                         SectionCard("Haftalık set hedefi (kas başına 10-20)") {
                             com.fittakip.app.data.MUSCLES.forEach { m ->
                                 val n = ms[m] ?: 0
@@ -119,7 +123,7 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                 val best = { n: String -> progress.firstOrNull { it.exercise.equals(n, true) }?.best }
                 val lifts = listOf("Bench Press", "Squat", "Deadlift", "Overhead Press").mapNotNull { n -> best(n)?.let { n to it } }
                 if (lifts.isNotEmpty()) {
-                    item {
+                    if (show("P_STRENGTH")) item {
                         SectionCard("Güç seviyen") {
                             lifts.forEach { (n, b) ->
                                 com.fittakip.app.domain.Calculator.strengthLevel(n, b, p.weightKg, p.male)?.let { (lvl, f) ->
@@ -146,7 +150,7 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     }
                 }
             }
-            item {
+            if (show("P_PRBOARD")) item {
                 SectionCard("Kişisel rekor tablosu 🏆") {
                     progress.sortedByDescending { it.best }.forEach { e ->
                         Row(Modifier.fillMaxWidth().clickable { onOpenExercise(e.exercise) }, verticalAlignment = Alignment.CenterVertically) {
@@ -158,10 +162,14 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     HintText("Detay, tüm seanslar ve rekor günleri için harekete dokun.")
                 }
             }
-            items(progress, key = { it.exercise.lowercase() }) { ExerciseCard(it) { onOpenExercise(it.exercise) } }
+            if (show("P_CARDS")) items(progress, key = { it.exercise.lowercase() }) { ExerciseCard(it) { onOpenExercise(it.exercise) } }
         }
-        item { HowItWorks() }
+        if (show("P_HOW")) item { HowItWorks() }
+        item { SecondaryButton("Kartları düzenle", onClick = { picker = true }, icon = Icons.Rounded.Tune, modifier = Modifier.fillMaxWidth()) }
     }
+    if (picker) CardPicker("Gelişim kartları", PROGRESS_CARDS, settings.hiddenSections, onToggle = { id, on ->
+        vm.updateSettings { it.copy(hiddenSections = if (on) it.hiddenSections - id else it.hiddenSections + id) }
+    }) { picker = false }
 }
 
 @Composable

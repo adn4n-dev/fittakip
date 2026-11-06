@@ -625,3 +625,49 @@ fun TrendChart(
         }
     }
 }
+
+// ---------- Kart seçici ----------
+
+val PROGRESS_CARDS = listOf(
+    "P_COUNTS" to "Gelişen / plato / düşen özeti",
+    "P_HEATMAP" to "Antrenman takvimi",
+    "P_MUSCLE" to "Kas gruplarına hacim",
+    "P_TOTALS" to "Toplam rekor ve tonaj",
+    "P_DELOAD" to "Deload önerisi",
+    "P_SETS" to "Haftalık set hedefi",
+    "P_STRENGTH" to "Güç seviyesi ve DOTS",
+    "P_PRBOARD" to "Kişisel rekor tablosu",
+    "P_CARDS" to "Hareket kartları ve grafikler",
+    "P_HOW" to "Tahmin nasıl yapılıyor?"
+)
+
+val BODY_CARDS = listOf(
+    "B_ADVICE" to "Kilo yorumu ve kalori ayarı",
+    "B_CHART" to "Kilo grafiği",
+    "B_COMPOSITION" to "BMI, yağ oranı, ideal kilo",
+    "B_PHOTOS" to "İlerleme fotoğrafları",
+    "B_MEASURES" to "Ölçüler",
+    "B_HISTORY" to "Tartı geçmişi"
+)
+
+/** Hangi kartların görüneceğini kullanıcı seçer; hiçbir özellik silinmez. */
+@Composable
+fun CardPicker(title: String, options: List<Pair<String, String>>, hidden: Set<String>, onToggle: (String, Boolean) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                HintText("Görmek istediklerini aç. Kapattıkların silinmez, istediğin zaman geri açabilirsin.")
+                options.forEach { (id, label) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = id !in hidden, onCheckedChange = { onToggle(id, it) })
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Tamam") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
+}

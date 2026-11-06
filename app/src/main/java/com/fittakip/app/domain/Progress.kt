@@ -1,5 +1,6 @@
 package com.fittakip.app.domain
 
+import com.fittakip.app.data.counted
 import com.fittakip.app.data.BodyWeight
 import com.fittakip.app.data.WorkoutSet
 import kotlin.math.abs
@@ -94,7 +95,7 @@ object ProgressAnalyzer {
     const val PLATEAU_THRESHOLD_PCT = 0.5
 
     fun exercises(sets: List<WorkoutSet>, bw: Double = 0.0): List<ExerciseProgress> =
-        sets.filter { !it.warmup && !Stats.isTimed(it.exercise) }.groupBy { it.exercise.trim().lowercase() }
+        sets.filter { it.counted() && !Stats.isTimed(it.exercise) }.groupBy { it.exercise.trim().lowercase() }
             .values
             .map { analyzeExercise(it, bw) }
             .filter { it.best > 0 }

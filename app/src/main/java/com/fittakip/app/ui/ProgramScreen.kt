@@ -27,6 +27,7 @@ import java.time.LocalDate
 @Composable
 fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val sets by vm.sets.collectAsStateWithLifecycle()
     var editingDay by rememberSaveable { mutableStateOf<Int?>(null) }
     var newTemplate by rememberSaveable { mutableStateOf(false) }
     val todayIdx = LocalDate.now().dayOfWeek.value - 1
@@ -34,6 +35,28 @@ fun ProgramScreen(vm: AppViewModel, onBack: () -> Unit) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { BackHeader("Haftalık program", onBack) }
+
+        item {
+            SectionCard("Program nasıl ilerlesin?") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectCard(!settings.rotation, { vm.setPlanMode(false) }, "📅 Günlere bağlı", Modifier.weight(1f), "Pazartesi hep Upper A")
+                    SelectCard(settings.rotation, { vm.setPlanMode(true) }, "🔁 Sırayla", Modifier.weight(1f), "Kaçırınca sıra kaymaz")
+                }
+                if (settings.rotation) {
+                    val order = com.fittakip.app.domain.PlanResolver.order(settings)
+                    val next = com.fittakip.app.domain.PlanResolver.templateFor(settings, sets, vm.today)
+                    if (order.isEmpty()) HintText("Aşağıda günlere antrenman ata; sıra o atamaların sırasına göre oluşur.")
+                    else {
+                        Text("Sıra: " + order.joinToString(" → ") { it.name }, style = MaterialTheme.typography.titleSmall)
+                        next?.let { Pill("Sıradaki: ${it.name}", FitColors.Lime) }
+                        HintText("İstediğin gün spora git; uygulama her seferinde sıradaki antrenmanı verir. Hangi gün gittiğin önemli değil, sıra korunur. Arka arkaya iki gün antrenman yaparsan dinlenmeyi hatırlatırım.")
+                        TextButton(onClick = { vm.resetRotation() }) { Text("Sırayı baştan başlat (${order.first().name})") }
+                    }
+                } else {
+                    HintText("Her gün o güne atadığın antrenman gelir. Bir gün kaçırırsan o antrenman o hafta atlanır. Haftada belirli günler gidiyorsan bu mod uygundur.")
+                }
+            }
+        }
 
         item {
             SectionCard("Hazır programla başla", icon = Icons.Rounded.AutoAwesome) {

@@ -32,8 +32,13 @@ data class AppSettings(
     val weekPlan: String = "",                       // "Push;OFF;Pull;..." (Pazartesi'den Pazar'a)
     val hiddenCards: Set<String> = setOf("FASTING", "QUOTE", "BADGES"),
     val checkinItems: Set<String> = setOf("SLEEP"),
-    val programSeeded: Boolean = false
+    val programSeeded: Boolean = false,
+    val planMode: String = "WEEKDAY",        // WEEKDAY: günlere bağlı · ROTATION: sırayla
+    val rotationStart: Long = 0,
+    val hiddenSections: Set<String> = emptySet()
 ) {
+    val rotation: Boolean get() = planMode == "ROTATION"
+
     /** 0 = Pazartesi … 6 = Pazar; boş = plan yok. */
     val plan: List<String> get() = weekPlan.split(";").let { l -> List(7) { i -> l.getOrNull(i)?.trim() ?: "" } }
     val hasPlan: Boolean get() = plan.any { it.isNotEmpty() }
@@ -102,7 +107,10 @@ class SettingsStore(context: Context) {
         weekPlan = prefs.getString("weekPlan", "") ?: "",
         hiddenCards = set("hiddenCards", setOf("FASTING", "QUOTE", "BADGES")),
         checkinItems = set("checkinItems", setOf("SLEEP")),
-        programSeeded = prefs.getBoolean("programSeeded", false)
+        programSeeded = prefs.getBoolean("programSeeded", false),
+        planMode = prefs.getString("planMode", "WEEKDAY") ?: "WEEKDAY",
+        rotationStart = prefs.getLong("rotationStart", 0),
+        hiddenSections = set("hiddenSections", emptySet())
     )
 
     @Synchronized
@@ -137,6 +145,9 @@ class SettingsStore(context: Context) {
             .putStringSet("hiddenCards", HashSet(s.hiddenCards))
             .putStringSet("checkinItems", HashSet(s.checkinItems))
             .putBoolean("programSeeded", s.programSeeded)
+            .putString("planMode", s.planMode)
+            .putLong("rotationStart", s.rotationStart)
+            .putStringSet("hiddenSections", HashSet(s.hiddenSections))
             .apply()
         _state.value = s
     }

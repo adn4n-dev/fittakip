@@ -247,6 +247,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
 
         item {
             SectionCard("Hatırlatma", icon = Icons.Rounded.Notifications) {
+                ExactAlarmHint()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Seri hatırlatması", style = MaterialTheme.typography.titleSmall)

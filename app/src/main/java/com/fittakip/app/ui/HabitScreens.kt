@@ -1,5 +1,6 @@
 package com.fittakip.app.ui
 
+import com.fittakip.app.data.counted
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -238,7 +239,7 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     val state by vm.profile.collectAsStateWithLifecycle()
     val list = remember(sets, name) { sets.filter { it.exercise.trim().equals(name, true) } }
-    val work = list.filter { !it.warmup }
+    val work = list.filter { it.counted() }
     val bw = state.profile?.weightKg ?: 0.0
     val progress = remember(work, bw) { if (work.isEmpty()) null else com.fittakip.app.domain.ProgressAnalyzer.analyzeExercise(work, bw) }
     val prs = remember(sets, name, bw) { Gamification.prDays(sets, bw).filter { it.second.equals(name, true) } }

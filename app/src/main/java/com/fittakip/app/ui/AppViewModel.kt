@@ -1,5 +1,6 @@
 package com.fittakip.app.ui
 
+import com.fittakip.app.data.counted
 import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
@@ -297,17 +298,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Antrenman ----------
 
-    fun addSet(exercise: String, kg: Double, reps: Int, note: String, warmup: Boolean = false, rpe: Double? = null, restOverride: Int? = null) = viewModelScope.launch {
+    fun addSet(
+        exercise: String, kg: Double, reps: Int, note: String, warmup: Boolean = false, rpe: Double? = null,
+        restOverride: Int? = null, isDrop: Boolean = false
+    ) = viewModelScope.launch {
         val name = normalizeExercise(exercise)
         val day = _workoutDay.value
         val bw = profile.value.profile?.weightKg ?: 0.0
-        val previous = sets.value.filter { !it.warmup && it.exercise.trim().equals(name, true) }
+        val previous = sets.value.filter { it.counted() && it.exercise.trim().equals(name, true) }
         val oldBest = previous.maxOfOrNull { Stats.e1rm(it, bw) } ?: 0.0
         val hadEarlierDay = previous.any { it.epochDay < day }
         val newBest = Stats.epley1RM(Stats.load(name, kg, bw), reps)
-        dao.addSet(WorkoutSet(epochDay = day, exercise = name, weightKg = kg, reps = reps, note = note, warmup = warmup, rpe = rpe))
+        dao.addSet(WorkoutSet(epochDay = day, exercise = name, weightKg = kg, reps = reps, note = note, warmup = warmup, rpe = rpe, isDrop = isDrop))
         if (day != today) { _msgText = "Set ${dayLabelShort(day)} gününe eklendi."; return@launch }
-        if (!warmup && !Stats.isTimed(name) && hadEarlierDay && newBest > oldBest + 1e-6) {
+        if (!warmup && !isDrop && !Stats.isTimed(name) && hadEarlierDay && newBest > oldBest + 1e-6) {
             celebrate(Celebration.PR(name, newBest, oldBest))
             vibrate(250)
         }
@@ -339,7 +343,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val min = ((end - start) / 60_000).toInt()
         if (min < 1) { _msgText = "Oturum 1 dakikadan kısa olduğu için kaydedilmedi."; return@launch }
         dao.addSession(WorkoutSession(epochDay = today, start = start, end = end))
-        val todaySets = sets.value.filter { it.epochDay == today && !it.warmup }
+        val todaySets = sets.value.filter { it.epochDay == today && it.counted() }
         val vol = todaySets.sumOf { it.weightKg * it.reps }.roundToInt()
         celebrate(Celebration.Custom("🏁", "Antrenman bitti!", "$min dakika · ${todaySets.size} set · $vol kg hacim"))
     }
@@ -375,11 +379,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun applyPreset(days: List<String>) = store.update { it.copy(weekPlan = days.joinToString(";")) }
+
+    /** Programı günlere bağlı ya da sıralı çalıştır. Sıralı moda geçerken sıra bugünden başlar. */
+    fun setPlanMode(rotation: Boolean) = store.update {
+        it.copy(planMode = if (rotation) "ROTATION" else "WEEKDAY", rotationStart = if (rotation) today else it.rotationStart)
+    }
+
+    /** Sıralı modda sırayı baştan başlatır (ilk antrenmandan). */
+    fun resetRotation() = store.update { it.copy(rotationStart = today) }
     fun clearPlan() = store.update { it.copy(weekPlan = "") }
 
     /** Bugünün programını açar ve kronometreyi başlatır. */
     fun startTodayWorkout() {
-        val tpl = settings.value.templateFor(today) ?: return
+        val tpl = com.fittakip.app.domain.PlanResolver.templateFor(settings.value, sets.value, today) ?: return
         _workoutDay.value = today
         store.update { it.copy(activeTemplate = tpl.name, sessionStart = if (it.sessionStart == 0L) System.currentTimeMillis() else it.sessionStart) }
     }
@@ -534,7 +546,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Paylaşım ----------
 
     fun workoutShareText(day: Long): String {
-        val ds = sets.value.filter { it.epochDay == day && !it.warmup }
+        val ds = sets.value.filter { it.epochDay == day && it.counted() }
         val c = cardio.value.filter { it.epochDay == day }
         val sb = StringBuilder("🏋️ FitTakip antrenmanım · ${LocalDate.ofEpochDay(day)}\n")
         ds.groupBy { it.exercise.trim() }.forEach { (n, l) ->

@@ -1,5 +1,6 @@
 package com.fittakip.app.domain
 
+import com.fittakip.app.data.counted
 import com.fittakip.app.data.AppSettings
 import com.fittakip.app.data.Profile
 import com.fittakip.app.data.WorkoutSet
@@ -195,7 +196,7 @@ object Calculator {
      * ulaşmadıysan aynı ağırlıkla tekrar artırmaya devam et.
      */
     fun rangeSuggestion(history: List<WorkoutSet>, item: com.fittakip.app.data.PlanItem, today: Long): String? {
-        val past = history.filter { !it.warmup && it.exercise.equals(item.exercise, true) && it.epochDay < today }
+        val past = history.filter { it.counted() && it.exercise.equals(item.exercise, true) && it.epochDay < today }
         if (past.isEmpty()) return "İlk sefer: ${item.label} hedefle, son tekrarlar zorlasın ama form bozulmasın."
         val lastDay = past.maxOf { it.epochDay }
         val last = past.filter { it.epochDay == lastDay }
@@ -211,7 +212,7 @@ object Calculator {
     }
 
     fun suggestion(history: List<WorkoutSet>, exercise: String, today: Long): String? {
-        val past = history.filter { !it.warmup && it.exercise.equals(exercise.trim(), true) && it.epochDay < today }
+        val past = history.filter { it.counted() && it.exercise.equals(exercise.trim(), true) && it.epochDay < today }
         if (past.isEmpty()) return null
         val lastDay = past.maxOf { it.epochDay }
         val best = past.filter { it.epochDay == lastDay }.maxBy { Stats.epley1RM(it.weightKg, it.reps) }
