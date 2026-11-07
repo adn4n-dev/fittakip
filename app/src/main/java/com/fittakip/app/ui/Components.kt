@@ -216,7 +216,7 @@ fun EmptyState(icon: ImageVector, title: String, text: String) {
 fun HintText(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
     )
@@ -232,7 +232,7 @@ fun Pill(text: String, color: Color, modifier: Modifier = Modifier, onClick: (()
     if (onClick != null) m = m.clickable(onClick = onClick)
     Text(
         text,
-        modifier = m.padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = m.padding(horizontal = 14.dp, vertical = if (onClick != null) 10.dp else 6.dp),   // dokunulabilenler parmak boyunda
         color = color,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold

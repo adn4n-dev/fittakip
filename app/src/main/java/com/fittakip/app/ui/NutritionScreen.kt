@@ -113,25 +113,17 @@ fun NutritionScreen(vm: AppViewModel) {
         val warnings = Calculator.safetyWarnings(p.male, p.heightCm, p.weightKg, p.targetWeightKg, Goal.from(p.goal), settings.lifeStage, settings.healthCondition)
         if (warnings.isNotEmpty()) item { SafetyNotice(warnings) }
         item { HeroCard(p, result, foods, settings.kcalAdjust, dayWater, waterGoal) { editing = true } }
-        item { WaterCard(dayWater, waterGoal, { vm.addWater(it) }, { vm.undoWater() }) }
-        item {
-            val adaptive = remember(allFoods, weights) { Calculator.adaptiveTdee(allFoods, weights, vm.today) }
-            AdaptiveCard(adaptive, result.tdee, settings.kcalAdjust) { vm.applyAdaptiveTdee(it) }
-        }
+        // En sık yapılan iş en üstte: yemek ekle
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrimaryButton("Yemek ekle", onClick = { sheet = true }, icon = Icons.Rounded.Add)
-                Pill(
-                    if (settings.fastingMode) "🌙 Oruç modu açık · öğünler sahur / iftar" else "🌙 Oruç tutuyorum (sahur / iftar)",
-                    if (settings.fastingMode) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = { vm.updateSettings { it.copy(fastingMode = !it.fastingMode) } }
-                )
+                PrimaryButton("Yemek ekle · ara ya da barkod okut", onClick = { sheet = true }, icon = Icons.Rounded.Add)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Hızlı kalori", onClick = { quick = true }, icon = Icons.Rounded.Bolt, modifier = Modifier.weight(1f))
                     SecondaryButton("Dünü kopyala", onClick = { vm.copyPreviousDay() }, icon = Icons.Rounded.ContentCopy, modifier = Modifier.weight(1f))
                 }
             }
         }
+        item { WaterCard(dayWater, waterGoal, { vm.addWater(it) }, { vm.undoWater() }) }
 
         if (foods.isEmpty()) {
             item {
@@ -156,6 +148,17 @@ fun NutritionScreen(vm: AppViewModel) {
             }
         }
         if (foods.isNotEmpty()) item { HintText("Bir kayda dokunarak porsiyonunu ya da öğününü değiştirebilirsin.") }
+        item {
+            Pill(
+                if (settings.fastingMode) "🌙 Oruç modu açık · öğünler sahur / iftar" else "🌙 Oruç tutuyorum (sahur / iftar)",
+                if (settings.fastingMode) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = { vm.updateSettings { it.copy(fastingMode = !it.fastingMode) } }
+            )
+        }
+        item {
+            val adaptive = remember(allFoods, weights) { Calculator.adaptiveTdee(allFoods, weights, vm.today) }
+            AdaptiveCard(adaptive, result.tdee, settings.kcalAdjust) { vm.applyAdaptiveTdee(it) }
+        }
 
         // Öğün dağılımı
         if (foods.size >= 2) {

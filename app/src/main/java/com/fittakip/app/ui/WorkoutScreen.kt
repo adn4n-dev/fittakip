@@ -106,6 +106,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     }
 
     var focus by rememberSaveable { mutableStateOf(false) }
+    var moreOptions by rememberSaveable { mutableStateOf(false) }
 
     /** Spor modu: hedefi tek dokunuşla kaydet, süperset partnerine ya da sıradaki harekete geç. */
     fun logAndAdvance(w: Double, r: Int) {
@@ -296,6 +297,17 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     Stepper(kg, { kg = it }, "Ağırlık (kg) · ±${step.clean()}", step, Modifier.weight(1f))
                     Stepper(reps, { reps = it }, "Tekrar", 1.0, Modifier.weight(1f))
                 }
+                val showMore = moreOptions || warmup || rpe != null || drop || note.isNotBlank()
+                Surface(
+                    onClick = { moreOptions = !showMore }, shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.04f), modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("⚙️ Isınma, zorluk, drop set, not", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text(if (showMore) "Gizle ▲" else "Aç ▼", style = MaterialTheme.typography.labelLarge, color = FitColors.Lime)
+                    }
+                }
+                if (showMore) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = warmup, onCheckedChange = { warmup = it })
                     Spacer(Modifier.width(10.dp))
@@ -333,6 +345,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                     }
                 }
                 TextInput(note, { note = it }, "Not (ops.): form, his…", singleLine = false)
+                }
 
                 val w = kg.toNum()
                 val r = reps.toNum()?.toInt()

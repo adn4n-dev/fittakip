@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fittakip.app.ui.*
@@ -223,27 +224,29 @@ private fun FloatingNav(tabs: List<Pair<String, androidx.compose.ui.graphics.vec
                 .background(androidx.compose.ui.graphics.Color(0xF2171A20))
                 .border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f), androidx.compose.foundation.shape.RoundedCornerShape(30.dp))
                 .padding(6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             tabs.forEachIndexed { i, (label, icon) ->
                 val on = i == selected
                 val bg by animateColorAsState(if (on) FitColors.Lime else androidx.compose.ui.graphics.Color.Transparent, label = "bg")
                 val fg by animateColorAsState(if (on) androidx.compose.ui.graphics.Color(0xFF0E1200) else FitColors.Muted, label = "fg")
-                Row(
+                // Her sekmenin adı her zaman görünür (sadece simgeyle hangi ekran olduğu tahmin edilmesin)
+                androidx.compose.foundation.layout.Column(
                     Modifier
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                        .weight(1f)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
                         .background(bg)
                         .clickable { onSelect(i) }
-                        .animateContentSize()
-                        .padding(horizontal = if (on) 14.dp else 12.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(22.dp))
-                    if (on) {
-                        Spacer(Modifier.width(6.dp))
-                        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                    }
+                    Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(22.dp))
+                    Text(
+                        label, color = fg, maxLines = 1,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
+                    )
                 }
             }
         }

@@ -25,7 +25,7 @@ object FitColors {
     val Blue = Color(0xFF5AB0FF)
     val Red = Color(0xFFFF5C6C)
     val Text = Color(0xFFF2F3F5)
-    val Muted = Color(0xFF8D929C)
+    val Muted = Color(0xFFA4A9B3)   // koyu zeminde daha okunur
 }
 
 private val base = Typography()
