@@ -509,6 +509,7 @@ private fun AccountCard(vm: AppViewModel, settings: com.fittakip.app.data.AppSet
             }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        DriveCard(vm)
         TextButton(onClick = { confirmRedo = true }) { Text("Kurulum sihirbazını yeniden başlat") }
     }
     if (confirmRedo) AlertDialog(

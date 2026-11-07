@@ -208,6 +208,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (st.remindersOn) Reminders.schedule(app, st.reminderHour)
         Reminders.setMorning(app, st.morningOn)
         Reminders.setWater(app, st.waterRemindOn)
+        com.fittakip.app.notify.DriveBackup.schedule(app, st.driveBackupOn)
     }
 
     private fun kcalLeft(g: GameState): Int? = profile.value.profile?.let { Calculator.calculate(it, settings.value).target - g.todayKcal }
@@ -330,6 +331,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             vibrate(250)
         }
         startRest(restOverride ?: if (warmup) 45 else settings.value.restSeconds)
+        if (settings.value.driveBackupOn) com.fittakip.app.notify.DriveBackup.soon(getApplication())
     }
 
     fun deleteSet(set: WorkoutSet) = viewModelScope.launch {
@@ -354,6 +356,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (start == 0L) return@launch
         val end = System.currentTimeMillis()
         store.update { it.copy(sessionStart = 0) }
+        if (settings.value.driveBackupOn) com.fittakip.app.notify.DriveBackup.soon(getApplication())
         val min = ((end - start) / 60_000).toInt()
         if (min < 1) { _msgText = "Oturum 1 dakikadan kısa olduğu için kaydedilmedi."; return@launch }
         dao.addSession(WorkoutSession(epochDay = today, start = start, end = end))
@@ -651,6 +654,52 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             _msgText = "CSV kaydedilemedi: ${e.message}"
         }
+    }
+
+    // ---------- Google Drive yedeği ----------
+
+    private val _driveBusy = MutableStateFlow(false)
+    val driveBusy: StateFlow<Boolean> = _driveBusy
+
+    /** İzin alındıktan sonra: otomatik yedeği aç ve hemen bir yedek al. */
+    fun enableDrive(token: String) = viewModelScope.launch {
+        store.update { it.copy(driveBackupOn = true) }
+        com.fittakip.app.notify.DriveBackup.schedule(getApplication(), true)
+        driveBackupNow(token)
+    }
+
+    fun disableDrive() {
+        store.update { it.copy(driveBackupOn = false) }
+        com.fittakip.app.notify.DriveBackup.schedule(getApplication(), false)
+        _msgText = "Drive yedeği kapatıldı. Drive'daki eski yedekler duruyor."
+    }
+
+    fun driveBackupNow(token: String? = null) = viewModelScope.launch {
+        _driveBusy.value = true
+        val err = com.fittakip.app.notify.DriveBackup.run(getApplication(), token)
+        store.reload()
+        _driveBusy.value = false
+        _msgText = err ?: "Drive'a yedeklendi ☁️"
+    }
+
+    suspend fun driveList(token: String): List<com.fittakip.app.auth.DriveSync.RemoteBackup> =
+        com.fittakip.app.auth.DriveSync.list(token)
+
+    /** Drive'daki bir yedeği geri yükler (telefondaki kayıtların yerine geçer). */
+    fun driveRestore(token: String, id: String, onDone: () -> Unit = {}) = viewModelScope.launch {
+        _driveBusy.value = true
+        try {
+            val json = com.fittakip.app.auth.DriveSync.download(token, id)
+            Backup.import(db, json, getApplication())
+            store.reload()
+            store.update { it.copy(seenInit = false, onboarded = true, driveBackupOn = true) }
+            com.fittakip.app.notify.DriveBackup.schedule(getApplication(), true)
+            _msgText = "Drive'daki yedek geri yüklendi ✅"
+            onDone()
+        } catch (e: Exception) {
+            _msgText = "Geri yüklenemedi: ${e.message}"
+        }
+        _driveBusy.value = false
     }
 
     fun importFrom(uri: Uri) = viewModelScope.launch {

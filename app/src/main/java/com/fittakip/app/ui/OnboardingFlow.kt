@@ -73,6 +73,10 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
     var goal by rememberSaveable { mutableStateOf(Goal.CUT.name) }
     var activity by rememberSaveable { mutableDoubleStateOf(1.55) }
     var lifeStage by rememberSaveable { mutableStateOf("") }
+    var driveWanted by rememberSaveable { mutableStateOf(true) }
+    var driveError by remember { mutableStateOf<String?>(null) }
+    var restoreToken by remember { mutableStateOf<String?>(null) }
+    val withDrive = rememberDriveAuth { driveError = it }
     var health by rememberSaveable { mutableStateOf(false) }
 
     // Program
@@ -119,6 +123,7 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
     }
 
     BackHandler(enabled = step > 0) { step-- }
+    restoreToken?.let { t -> DriveRestoreDialog(vm, t, onDismiss = { restoreToken = null }, onRestored = { onDone(false) }) }
 
     Column(Modifier.fillMaxSize()) {
         if (step > 0) {
@@ -141,7 +146,19 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
                     button = "Devam", enabled = name.isNotBlank() && weight.toNum() != null && height.toNum() != null && age.toNum() != null,
                     onNext = { step = 2 }
                 ) {
-                    if (gEmail.isNotBlank()) Pill("✓ $gEmail", FitColors.Lime)
+                    if (gEmail.isNotBlank()) {
+                        Pill("✓ $gEmail", FitColors.Lime)
+                        Surface(
+                            onClick = { driveError = null; withDrive { restoreToken = it } },
+                            shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = 0.06f), modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text("☁️ Daha önce kullandın mı?", style = MaterialTheme.typography.titleSmall)
+                                HintText("Drive'daki yedeğini geri yükle; programın ve kayıtların geri gelsin, kurulumu atla.")
+                            }
+                        }
+                        driveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
                     TextInput(name, { name = it }, "Adın")
                     Label("Cinsiyet")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -257,8 +274,23 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
                     StepScaffold(
                         title = "Hazırsın${if (name.isNotBlank()) ", $name" else ""}! 🎉",
                         subtitle = "Her şeyi sonra Ayarlar'dan ve Program ekranından değiştirebilirsin.",
-                        button = if (preset == null) "Programımı girmeye geç" else "Başlayalım", onNext = ::finish
+                        button = if (preset == null) "Programımı girmeye geç" else "Başlayalım",
+                        onNext = { if (driveWanted) withDrive { t -> finish(); vm.enableDrive(t) } else finish() }
                     ) {
+                        Surface(
+                            onClick = { driveWanted = !driveWanted }, shape = RoundedCornerShape(16.dp),
+                            color = if (driveWanted) FitColors.Lime.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.05f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("☁️ Google Drive'a otomatik yedekle", style = MaterialTheme.typography.titleSmall)
+                                    HintText("Telefon değişse de kaybolmaz. Sadece bu uygulamanın gördüğü gizli klasöre.")
+                                }
+                                Switch(checked = driveWanted, onCheckedChange = { driveWanted = it })
+                            }
+                        }
+                        driveError?.let { Text(it + " Drive'sız devam etmek için düğmeyi kapat.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                         GlowCard {
                             val dark = Color(0xFF0E1200)
                             Text("GÜNLÜK HEDEFİN", color = dark.copy(alpha = 0.65f), style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp)

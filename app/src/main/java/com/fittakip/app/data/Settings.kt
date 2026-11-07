@@ -46,7 +46,9 @@ data class AppSettings(
     val googleFullName: String = "",
     val lifeStage: String = "",                      // "", "PREGNANT", "BREASTFEEDING" — kalori açığı uygulanmaz
     val healthCondition: Boolean = false,            // diyabet/tansiyon/kalp/tiroid vb. — doktor notu gösterilir
-    val fastingMode: Boolean = false                 // oruç modu: öğünler sahur / iftar
+    val fastingMode: Boolean = false,                // oruç modu: öğünler sahur / iftar
+    val driveBackupOn: Boolean = false,              // Google Drive'a günlük otomatik yedek
+    val lastDriveBackup: Long = 0L
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -175,7 +177,9 @@ class SettingsStore(context: Context) {
         googleFullName = prefs.getString("googleFullName", "") ?: "",
         lifeStage = prefs.getString("lifeStage", "") ?: "",
         healthCondition = prefs.getBoolean("healthCondition", false),
-        fastingMode = prefs.getBoolean("fastingMode", false)
+        fastingMode = prefs.getBoolean("fastingMode", false),
+        driveBackupOn = prefs.getBoolean("driveBackupOn", false),
+        lastDriveBackup = prefs.getLong("lastDriveBackup", 0L)
     )
 
     @Synchronized
@@ -224,6 +228,8 @@ class SettingsStore(context: Context) {
             .putString("lifeStage", s.lifeStage)
             .putBoolean("healthCondition", s.healthCondition)
             .putBoolean("fastingMode", s.fastingMode)
+            .putBoolean("driveBackupOn", s.driveBackupOn)
+            .putLong("lastDriveBackup", s.lastDriveBackup)
             .apply()
         _state.value = s
     }
