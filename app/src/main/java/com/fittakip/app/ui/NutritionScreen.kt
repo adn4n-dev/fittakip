@@ -213,8 +213,6 @@ fun NutritionScreen(vm: AppViewModel) {
     if (sheet) {
         AddFoodSheet(
             fasting = settings.fastingMode,
-            apiKey = settings.anthropicKey,
-            onSaveKey = { k -> vm.updateSettings { it.copy(anthropicKey = k.trim()) } },
             history = allFoods,
             customFoods = customFoods,
             savedMeals = savedMeals,
@@ -407,8 +405,6 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
 @Composable
 private fun AddFoodSheet(
     fasting: Boolean,
-    apiKey: String,
-    onSaveKey: (String) -> Unit,
     history: List<FoodEntry>,
     customFoods: List<CustomFood>,
     savedMeals: List<com.fittakip.app.data.SavedMeal>,
@@ -501,8 +497,6 @@ private fun AddFoodSheet(
     }
 
     // ---- Fotoğraftan kalori ----
-    var askKey by remember { mutableStateOf(false) }
-    fun aiAvailable() = com.fittakip.app.data.LocalVision.isReady(context) || apiKey.isNotBlank()
     var photoBusy by remember { mutableStateOf(false) }
     var photoResult by remember { mutableStateOf<com.fittakip.app.data.FoodVision.Result?>(null) }
     var photoMsg by remember { mutableStateOf<String?>(null) }
@@ -511,7 +505,7 @@ private fun AddFoodSheet(
         photoBusy = true; photoMsg = null; photoResult = null
         scope.launch {
             try {
-                val r = com.fittakip.app.data.FoodVision.analyzeAuto(context, uri, apiKey)
+                val r = com.fittakip.app.data.FoodVision.analyze(context, uri)
                 if (r.items.isEmpty()) photoMsg = r.note.ifBlank { "Fotoğrafta yiyecek bulamadım." } else photoResult = r
             } catch (e: Exception) {
                 photoMsg = (e as? com.fittakip.app.data.FoodVision.VisionException)?.message ?: "İnternet yok ya da bağlantı koptu."
@@ -534,7 +528,6 @@ private fun AddFoodSheet(
         takePhoto.launch(u)
     }
 
-    if (askKey) AiSetupDialog(onDismiss = { askKey = false }, onSaveKey = { k -> onSaveKey(k); askKey = false })
     if (manualBarcode) {
         var code by remember { mutableStateOf("") }
         AlertDialog(
@@ -623,16 +616,17 @@ private fun AddFoodSheet(
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SecondaryButton("📷 Fotoğraf çek", enabled = !photoBusy, modifier = Modifier.weight(1f),
-                            onClick = { if (!aiAvailable()) askKey = true else openCamera() })
+                            onClick = { openCamera() })
                         SecondaryButton("🖼️ Galeriden", enabled = !photoBusy, modifier = Modifier.weight(1f),
-                            onClick = { if (!aiAvailable()) askKey = true else pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+                            onClick = { pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) })
                     }
                 }
+                item { HintText("📷 Tabağının fotoğrafını çek, kalorisini Google Gemini tahmin etsin. Sadece o fotoğraf gönderilir, diğer kayıtların değil.") }
                 if (photoBusy) item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(10.dp))
-                        Text(if (com.fittakip.app.data.LocalVision.isReady(context)) "Telefondaki yapay zekâ tabağına bakıyor… (ilkinde ~30 sn)" else "Tabağına bakıyorum…")
+                        Text("Tabağına bakıyorum…")
                     }
                 }
                 photoMsg?.let { m -> item { Text(m, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }
@@ -981,102 +975,5 @@ private fun PhotoResultCard(
         if (r.note.isNotBlank()) HintText("💬 ${r.note}")
         HintText("Bu bir tahmin: porsiyon gözle kestirildiği için ±%20-30 sapabilir. Ekledikten sonra kayda dokunup porsiyonu düzeltebilirsin.")
         if (r.items.isNotEmpty()) PrimaryButton("Hepsini ${meal.label} öğününe ekle · ${r.items.sumOf { it.kcal }} kcal", onClick = { onAddAll(r.items) }, icon = Icons.Rounded.Add)
-    }
-}
-
-/** Kullanıcının kendi Claude API anahtarı (fotoğraftan kalori için). */
-@Composable
-fun ApiKeyDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var key by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("📷 Fotoğraftan kalori") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Tabağının fotoğrafını Claude (Anthropic) inceler ve kalorisini tahmin eder. Bunun için kendi Claude API anahtarın gerekiyor:", style = MaterialTheme.typography.bodyMedium)
-                HintText("1. console.anthropic.com adresinde hesap aç\n2. Billing'den biraz kredi yükle (fotoğraf başına yaklaşık 1 kuruş-1 cent)\n3. API Keys > Create Key, çıkan anahtarı buraya yapıştır")
-                OutlinedTextField(
-                    value = key, onValueChange = { key = it }, singleLine = true, label = { Text("sk-ant-…") },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                HintText("Anahtar sadece bu telefonda saklanır, yedeklere girmez. Fotoğraf sadece analiz için Anthropic'e gönderilir; diğer kayıtların gönderilmez.")
-            }
-        },
-        confirmButton = { TextButton(enabled = key.trim().startsWith("sk-"), onClick = { onSave(key) }) { Text("Kaydet") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } }
-    )
-}
-
-
-/** Fotoğraftan kalori için iki yol: telefona model indir (internetsiz, ücretsiz) ya da Claude anahtarı. */
-@Composable
-fun AiSetupDialog(onDismiss: () -> Unit, onSaveKey: (String) -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var keyMode by remember { mutableStateOf(false) }
-    var msg by remember { mutableStateOf<String?>(null) }
-    if (keyMode) { ApiKeyDialog(onDismiss = { keyMode = false }, onSave = onSaveKey); return }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("📷 Fotoğraftan kalori") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Surface(
-                    onClick = { msg = com.fittakip.app.data.LocalVision.startDownload(context) ?: "İndirme başladı ⬇️ Bildirimden takip edebilirsin; bitince fotoğrafla ekleyebilirsin." },
-                    shape = RoundedCornerShape(16.dp), color = FitColors.Lime.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("🧠 Telefona yapay zekâ indir", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
-                        HintText("Ücretsiz, internetsiz çalışır, fotoğraf telefondan çıkmaz. Bir kez 2,6 GB indirilir (sadece Wi-Fi). Analiz 20-60 sn sürer.")
-                    }
-                }
-                Surface(onClick = { keyMode = true }, shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = 0.06f), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("🔑 Claude API anahtarım var", style = MaterialTheme.typography.titleSmall)
-                        HintText("Daha isabetli ve birkaç saniyede sonuç. İnternet ister, fotoğraf başına ~1 cent.")
-                    }
-                }
-                msg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Kapat") } }
-    )
-}
-
-/** Ayarlar: telefondaki yapay zekânın durumu (indir / ilerleme / sil). */
-@Composable
-fun LocalAiCard() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var status by remember { mutableStateOf(com.fittakip.app.data.LocalVision.status(context)) }
-    var msg by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(status is com.fittakip.app.data.LocalVision.Status.Downloading) {
-        while (status is com.fittakip.app.data.LocalVision.Status.Downloading) {
-            kotlinx.coroutines.delay(1000)
-            status = com.fittakip.app.data.LocalVision.status(context)
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("🧠 Telefondaki yapay zekâ (Gemma 4)", style = MaterialTheme.typography.titleSmall)
-        when (val s = status) {
-            com.fittakip.app.data.LocalVision.Status.NotDownloaded -> {
-                HintText("Fotoğraftan kaloriyi internetsiz ve ücretsiz yapar. 2,6 GB, sadece Wi-Fi'da iner.")
-                TextButton(onClick = { msg = com.fittakip.app.data.LocalVision.startDownload(context); status = com.fittakip.app.data.LocalVision.status(context) }) { Text("İndir") }
-            }
-            is com.fittakip.app.data.LocalVision.Status.Downloading -> {
-                val pct = if (s.total > 0) s.done * 100 / s.total else 0
-                HintText(if (s.total > 0) "İniyor: %$pct (${s.done / 1_000_000} / ${s.total / 1_000_000} MB)" else "Wi-Fi bekleniyor…")
-                ProgressBar((pct / 100f).coerceIn(0f, 1f), FitColors.Lime)
-                TextButton(onClick = { com.fittakip.app.data.LocalVision.cancelOrDelete(context); status = com.fittakip.app.data.LocalVision.status(context) }) { Text("İptal", color = MaterialTheme.colorScheme.error) }
-            }
-            com.fittakip.app.data.LocalVision.Status.Ready -> {
-                HintText("Hazır ✅ Fotoğraflar artık telefonda, internetsiz analiz ediliyor. (Claude anahtarı girilmişse bile önce bu kullanılır.)")
-                TextButton(onClick = { com.fittakip.app.data.LocalVision.cancelOrDelete(context); status = com.fittakip.app.data.LocalVision.status(context) }) { Text("Modeli sil (2,6 GB boşalt)", color = MaterialTheme.colorScheme.error) }
-            }
-            is com.fittakip.app.data.LocalVision.Status.Failed -> {
-                Text(s.reason, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { msg = com.fittakip.app.data.LocalVision.startDownload(context); status = com.fittakip.app.data.LocalVision.status(context) }) { Text("Tekrar dene") }
-            }
-        }
-        msg?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }

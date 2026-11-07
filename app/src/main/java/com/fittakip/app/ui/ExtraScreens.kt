@@ -408,7 +408,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 }
             }
         }
-        item { HintText("FitTakip ${com.fittakip.app.BuildConfig.VERSION_NAME} · Verilerin bu telefonda saklanır; Drive yedeğini açarsan sadece senin Google Drive'ına gider. Ana ekrana FitTakip widget'ını ekleyebilir, uygulama ikonuna basılı tutarak kısayolları kullanabilirsin.") }
+        item { HintText("FitTakip ${com.fittakip.app.BuildConfig.VERSION_NAME} · Verilerin bu telefonda saklanır; Drive yedeğini açarsan sadece senin Google Drive'ına gider. Fotoğraftan kalori kullanırsan sadece o fotoğraf analiz için Google Gemini'ye gönderilir. Ana ekrana FitTakip widget'ını ekleyebilir, uygulama ikonuna basılı tutarak kısayolları kullanabilirsin.") }
     }
 
     var wipeDrive by remember { mutableStateOf(false) }
@@ -526,17 +526,6 @@ private fun AccountCard(vm: AppViewModel, settings: com.fittakip.app.data.AppSet
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         DriveCard(vm)
-        var keyDialog by remember { mutableStateOf(false) }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("📷 Fotoğraftan kalori", style = MaterialTheme.typography.titleSmall)
-                HintText(if (settings.anthropicKey.isBlank()) "Claude API anahtarı girilmedi" else "Anahtar kayıtlı (…${settings.anthropicKey.takeLast(4)})")
-            }
-            if (settings.anthropicKey.isBlank()) TextButton(onClick = { keyDialog = true }) { Text("Ekle") }
-            else TextButton(onClick = { vm.updateSettings { it.copy(anthropicKey = "") } }) { Text("Sil", color = MaterialTheme.colorScheme.error) }
-        }
-        LocalAiCard()
-        if (keyDialog) ApiKeyDialog(onDismiss = { keyDialog = false }) { k -> vm.updateSettings { it.copy(anthropicKey = k.trim()) }; keyDialog = false }
         TextButton(onClick = { confirmRedo = true }) { Text("Kurulum sihirbazını yeniden başlat") }
     }
     if (confirmRedo) AlertDialog(

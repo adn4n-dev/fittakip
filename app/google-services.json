@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1093829840374",
+    "project_id": "fittakip-771ed",
+    "storage_bucket": "fittakip-771ed.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1093829840374:android:d2242c6d90d64e5a8e8bd7",
+        "android_client_info": {
+          "package_name": "com.fittakip.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1093829840374-706rgf65inmovuevcun703ih7vnd30aj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fittakip.app",
+            "certificate_hash": "9ab986c38b4ff21d6cef5191192335c1ce723eed"
+          }
+        },
+        {
+          "client_id": "1093829840374-ief76lqs0q9fv2p5d6f3cructn353g25.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-b-khZgs17NFZPcy_kQVC8oIvqIfga-U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1093829840374-ief76lqs0q9fv2p5d6f3cructn353g25.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

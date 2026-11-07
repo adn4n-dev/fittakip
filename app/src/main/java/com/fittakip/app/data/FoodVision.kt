@@ -11,18 +11,15 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Fotoğraftan kalori tahmini: fotoğraf küçültülüp kullanıcının kendi Claude API anahtarıyla
- * Anthropic'e gönderilir; tabaktaki yiyecekler ve tahmini kalori/makrolar döner.
+ * Fotoğraftan kalori tahmini: fotoğraf küçültülüp Firebase AI Logic üzerinden Gemini'ye gönderilir;
+ * tabaktaki yiyecekler ve tahmini kalori/makrolar döner.
  * Bu bir TAHMİNDİR (porsiyon gözle kestirilir), kullanıcı eklemeden önce düzeltebilir.
  */
 object FoodVision {
-    private const val MODEL = "claude-sonnet-5-5"
 
     data class Guess(val name: String, val portion: String, val kcal: Int, val p: Double, val c: Double, val f: Double)
     data class Result(val items: List<Guess>, val note: String)
@@ -38,45 +35,27 @@ object FoodVision {
         kcal tam sayı; protein, carb, fat gram. Fotoğrafta yiyecek yoksa items boş dizi olsun ve note'ta bunu söyle.
     """.trimIndent()
 
-    /** Telefondaki model hazırsa onu (internetsiz), değilse Claude'u kullanır. */
-    suspend fun analyzeAuto(context: Context, uri: Uri, apiKey: String): Result =
-        if (LocalVision.isReady(context)) analyzeLocal(context, uri) else analyze(context, uri, apiKey)
+    private const val GEMINI = "gemini-3.8-flash"
 
-    suspend fun analyzeLocal(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
-        val jpeg = loadScaled(context, uri, 768) ?: throw VisionException("Fotoğraf açılamadı.")
-        val text = try { LocalVision.analyze(context, jpeg, PROMPT) } catch (e: Throwable) {
-            throw VisionException("Telefondaki yapay zekâ çalışamadı: ${e.message ?: e.javaClass.simpleName}")
-        }
-        parse(text)
-    }
-
-    suspend fun analyze(context: Context, uri: Uri, apiKey: String): Result = withContext(Dispatchers.IO) {
+    /** Firebase AI Logic üzerinden Gemini: anahtar gerekmez, sonuç birkaç saniyede. */
+    suspend fun analyze(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
         val jpeg = loadScaled(context, uri) ?: throw VisionException("Fotoğraf açılamadı.")
-        val body = JSONObject()
-            .put("model", MODEL)
-            .put("max_tokens", 1024)
-            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", JSONArray()
-                .put(JSONObject().put("type", "image").put("source", JSONObject()
-                    .put("type", "base64").put("media_type", "image/jpeg")
-                    .put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))))
-                .put(JSONObject().put("type", "text").put("text", PROMPT)))))
-        val c = URL("https://api.anthropic.com/v1/messages").openConnection() as HttpURLConnection
+        val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
         val text = try {
-            c.requestMethod = "POST"
-            c.connectTimeout = 20_000
-            c.readTimeout = 90_000
-            c.doOutput = true
-            c.setRequestProperty("content-type", "application/json")
-            c.setRequestProperty("x-api-key", apiKey.trim())
-            c.setRequestProperty("anthropic-version", "2023-06-01")
-            c.outputStream.use { it.write(body.toString().toByteArray()) }
-            val code = c.responseCode
-            val resp = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
-            if (code !in 200..299) throw VisionException(explain(code, resp))
-            val content = JSONObject(resp).optJSONArray("content") ?: JSONArray()
-            (0 until content.length()).map { content.getJSONObject(it) }.filter { it.optString("type") == "text" }.joinToString("") { it.optString("text") }
-        } finally {
-            c.disconnect()
+            val model = com.google.firebase.Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(GEMINI)
+            model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
+        } catch (e: Exception) {
+            val m = (e.message ?: "") + " " + (e.cause?.message ?: "")
+            throw VisionException(
+                when {
+                    m.contains("App Check", true) || m.contains("PERMISSION_DENIED", true) || m.contains("403") ->
+                        "Firebase erişimi reddetti. Firebase > App Check'te AI Logic için zorunluluğu kaldır."
+                    m.contains("quota", true) || m.contains("429") || m.contains("RESOURCE_EXHAUSTED", true) -> "Günlük ücretsiz kota doldu, yarın tekrar dene."
+                    m.contains("not been used", true) || m.contains("disabled", true) -> "Firebase'de AI Logic (Gemini Developer API) henüz açılmamış."
+                    m.contains("Unable to resolve host", true) || m.contains("timeout", true) -> "İnternet yok ya da çok yavaş."
+                    else -> "Fotoğraf analiz edilemedi: ${e.message ?: e.javaClass.simpleName}"
+                }
+            )
         }
         parse(text)
     }
@@ -98,13 +77,6 @@ object FoodVision {
         return Result(items, o.optString("note"))
     }
 
-    private fun explain(code: Int, body: String): String = when {
-        code == 401 -> "API anahtarı geçersiz. Ayarlar'dan kontrol et."
-        body.contains("credit balance", true) -> "Anthropic hesabında kredi kalmamış (console.anthropic.com > Billing)."
-        code == 429 -> "Çok sık denendi, biraz bekleyip tekrar dene."
-        code == 529 || code >= 500 -> "Claude şu an yoğun, birazdan tekrar dene."
-        else -> "Fotoğraf analiz edilemedi ($code)."
-    }
 
     /** En uzun kenarı 1024 px, JPEG %80; telefon yan çektiyse düzeltir. */
     private fun loadScaled(context: Context, uri: Uri, maxSide: Int = 1024): ByteArray? {
