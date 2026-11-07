@@ -37,10 +37,11 @@ fun ProgressScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     val game by vm.game.collectAsStateWithLifecycle()
     val bwNow = vm.profile.collectAsStateWithLifecycle().value.profile?.weightKg ?: 0.0
-    val progress = remember(sets, bwNow) { ProgressAnalyzer.exercises(sets, bwNow) }
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val split = remember(sets, settings) { com.fittakip.app.domain.Coach.splitByContext(sets, settings.planTemplates) }
+    val progress = remember(split, bwNow) { ProgressAnalyzer.exercises(split, bwNow) }
     val intensity = remember(sets) { sets.groupBy { it.epochDay }.mapValues { it.value.size } }
     val state by vm.profile.collectAsStateWithLifecycle()
-    val settings by vm.settings.collectAsStateWithLifecycle()
 
     LazyColumn(
         Modifier.fillMaxSize(),

@@ -119,6 +119,11 @@ fun NutritionScreen(vm: AppViewModel) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PrimaryButton("Yemek ekle", onClick = { sheet = true }, icon = Icons.Rounded.Add)
+                Pill(
+                    if (settings.fastingMode) "🌙 Oruç modu açık · öğünler sahur / iftar" else "🌙 Oruç tutuyorum (sahur / iftar)",
+                    if (settings.fastingMode) FitColors.Lime else MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = { vm.updateSettings { it.copy(fastingMode = !it.fastingMode) } }
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Hızlı kalori", onClick = { quick = true }, icon = Icons.Rounded.Bolt, modifier = Modifier.weight(1f))
                     SecondaryButton("Dünü kopyala", onClick = { vm.copyPreviousDay() }, icon = Icons.Rounded.ContentCopy, modifier = Modifier.weight(1f))
@@ -131,11 +136,11 @@ fun NutritionScreen(vm: AppViewModel) {
                 EmptyState(
                     Icons.Rounded.Restaurant,
                     if (day == vm.today) "Bugün henüz bir şey eklemedin" else "Bu gün için kayıt yok",
-                    "80'den fazla hazır yemek içinden ara ya da kendi değerlerini gir."
+                    "170'ten fazla hazır yemek içinden ara ya da kendi değerlerini gir."
                 )
             }
         }
-        Meal.entries.forEach { m ->
+        (Meal.choices(settings.fastingMode) + Meal.entries).distinct().forEach { m ->
             val list = foods.filter { Meal.from(it.meal) == m }
             if (list.isNotEmpty()) {
                 item(key = "meal-${m.name}") {
@@ -156,7 +161,7 @@ fun NutritionScreen(vm: AppViewModel) {
                 SectionCard("Öğün dağılımı", icon = Icons.Rounded.PieChart) {
                     val total = foods.sumOf { it.kcal }.coerceAtLeast(1)
                     HBars(
-                        Meal.entries.map { m -> "${m.emoji} ${m.label} · %${foods.filter { Meal.from(it.meal) == m }.sumOf { it.kcal } * 100 / total}" to foods.filter { Meal.from(it.meal) == m }.sumOf { it.kcal }.toDouble() },
+                        Meal.entries.filter { m -> foods.any { Meal.from(it.meal) == m } }.map { m -> "${m.emoji} ${m.label} · %${foods.filter { Meal.from(it.meal) == m }.sumOf { it.kcal } * 100 / total}" to foods.filter { Meal.from(it.meal) == m }.sumOf { it.kcal }.toDouble() },
                         FitColors.Orange, "kcal"
                     )
                 }
@@ -201,6 +206,7 @@ fun NutritionScreen(vm: AppViewModel) {
 
     if (sheet) {
         AddFoodSheet(
+            fasting = settings.fastingMode,
             history = allFoods,
             customFoods = customFoods,
             savedMeals = savedMeals,
@@ -233,7 +239,7 @@ fun NutritionScreen(vm: AppViewModel) {
         )
     }
 
-    if (quick) QuickKcalDialog(onDismiss = { quick = false }) { kcal, meal ->
+    if (quick) QuickKcalDialog(settings.fastingMode, onDismiss = { quick = false }) { kcal, meal ->
         vm.addFood("Hızlı ekleme", kcal, 0.0, 0.0, 0.0, meal)
         quick = false
     }
@@ -253,7 +259,7 @@ fun NutritionScreen(vm: AppViewModel) {
                     }
                     Text("Öğüne taşı", style = MaterialTheme.typography.labelLarge)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Meal.entries.forEach { m ->
+                        Meal.choices(settings.fastingMode).forEach { m ->
                             SelectCard(Meal.from(f.meal) == m, { vm.moveFood(f, m); editFood = null }, m.emoji, Modifier.weight(1f))
                         }
                     }
@@ -267,9 +273,9 @@ fun NutritionScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun QuickKcalDialog(onDismiss: () -> Unit, onAdd: (Int, Meal) -> Unit) {
+private fun QuickKcalDialog(fasting: Boolean, onDismiss: () -> Unit, onAdd: (Int, Meal) -> Unit) {
     var kcal by remember { mutableStateOf("") }
-    var meal by remember { mutableStateOf(Meal.forHour(LocalTime.now().hour)) }
+    var meal by remember { mutableStateOf(Meal.forHour(LocalTime.now().hour, fasting)) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Hızlı kalori") },
@@ -278,7 +284,7 @@ private fun QuickKcalDialog(onDismiss: () -> Unit, onAdd: (Int, Meal) -> Unit) {
                 HintText("Ne yediğini yazmakla uğraşmak istemiyorsan sadece kaloriyi gir.")
                 NumField(kcal, { kcal = it }, "Kalori", Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Meal.entries.forEach { m -> SelectCard(meal == m, { meal = m }, m.emoji, Modifier.weight(1f)) }
+                    Meal.choices(fasting).forEach { m -> SelectCard(meal == m, { meal = m }, m.emoji, Modifier.weight(1f)) }
                 }
             }
         },
@@ -392,6 +398,7 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddFoodSheet(
+    fasting: Boolean,
     history: List<FoodEntry>,
     customFoods: List<CustomFood>,
     savedMeals: List<com.fittakip.app.data.SavedMeal>,
@@ -405,7 +412,7 @@ private fun AddFoodSheet(
     onAdd: (String, Int, Double, Double, Double, Meal) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var meal by remember { mutableStateOf(Meal.forHour(LocalTime.now().hour)) }
+    var meal by remember { mutableStateOf(Meal.forHour(LocalTime.now().hour, fasting)) }
     var query by remember { mutableStateOf("") }
     var manual by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<FoodItem?>(null) }
@@ -432,7 +439,7 @@ private fun AddFoodSheet(
             item { Text("Yemek ekle", style = MaterialTheme.typography.headlineMedium) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Meal.entries.forEach { m -> SelectCard(meal == m, { meal = m }, m.emoji, Modifier.weight(1f), m.label) }
+                    Meal.choices(fasting).forEach { m -> SelectCard(meal == m, { meal = m }, m.emoji, Modifier.weight(1f), m.label) }
                 }
             }
             item {

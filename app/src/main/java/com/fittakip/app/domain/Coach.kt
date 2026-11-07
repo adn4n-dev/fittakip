@@ -61,4 +61,22 @@ object Coach {
             else -> Target(w, (atW.minOf { it.reps } + 1).coerceAtMost(item.repsMax))
         }
     }
+
+    /**
+     * Grafikler için: programında birden fazla antrenmanda geçen hareketleri (ör. Lat Pulldown hem
+     * Upper A hem Upper B) "Lat Pulldown · Upper A" / "· Upper B" diye ayırır. Kayıtlar değişmez, sadece görünüm.
+     */
+    fun splitByContext(sets: List<WorkoutSet>, templates: List<WorkoutTemplate>): List<WorkoutSet> {
+        if (templates.size < 2) return sets
+        val shared = templates.flatMap { t -> t.items.map { it.exercise.lowercase() }.distinct() }
+            .groupingBy { it }.eachCount().filterValues { it >= 2 }.keys
+        if (shared.isEmpty()) return sets
+        val dayTemplate = sets.filter { it.counted() }.groupBy { it.epochDay }.mapValues { templateOfDay(it.value, templates) }
+        return sets.map { s ->
+            val key = s.exercise.trim().lowercase()
+            val t = dayTemplate[s.epochDay]
+            if (key in shared && t != null && templates.first { it.name == t }.items.any { it.exercise.lowercase() == key })
+                s.copy(exercise = "${s.exercise.trim()} · $t") else s
+        }
+    }
 }

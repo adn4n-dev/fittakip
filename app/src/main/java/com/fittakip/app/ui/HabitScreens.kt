@@ -160,7 +160,11 @@ fun ExerciseDetailScreen(vm: AppViewModel, onBack: () -> Unit) {
     val name by vm.detailExercise.collectAsStateWithLifecycle()
     val sets by vm.sets.collectAsStateWithLifecycle()
     val state by vm.profile.collectAsStateWithLifecycle()
-    val list = remember(sets, name) { sets.filter { it.exercise.trim().equals(name, true) } }
+    val st by vm.settings.collectAsStateWithLifecycle()
+    val list = remember(sets, name, st) {
+        val src = if (name.contains(" · ")) com.fittakip.app.domain.Coach.splitByContext(sets, st.planTemplates) else sets
+        src.filter { it.exercise.trim().equals(name, true) }
+    }
     val work = list.filter { it.counted() }
     val bw = state.profile?.weightKg ?: 0.0
     val progress = remember(work, bw) { if (work.isEmpty()) null else com.fittakip.app.domain.ProgressAnalyzer.analyzeExercise(work, bw) }

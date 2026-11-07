@@ -31,4 +31,19 @@ class CoachTest {
         // tüm setlerde 15 → bir adım art, aralığın altından başla
         assertEquals(Coach.Target(12.0, 12), Coach.nextTarget(past, item))
     }
+
+    @Test
+    fun charts_splitSharedExercisesByWorkout() {
+        val sets = day(1, upperA, 60.0) + day(5, upperB, 45.0)
+        val names = Coach.splitByContext(sets, listOf(upperA, upperB)).map { it.exercise }.toSet()
+        assert("Lat Pulldown · Upper A" in names && "Lat Pulldown · Upper B" in names)
+        assert("Chest Press" in names)   // tek antrenmanda geçen hareket olduğu gibi kalır
+    }
+
+    @Test
+    fun fastingMeals() {
+        assertEquals(com.fittakip.app.data.Meal.SAHUR, com.fittakip.app.data.Meal.forHour(4, fasting = true))
+        assertEquals(com.fittakip.app.data.Meal.IFTAR, com.fittakip.app.data.Meal.forHour(19, fasting = true))
+        assertEquals(com.fittakip.app.data.Meal.DINNER, com.fittakip.app.data.Meal.forHour(19))
+    }
 }

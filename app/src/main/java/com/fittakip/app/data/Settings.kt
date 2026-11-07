@@ -45,7 +45,8 @@ data class AppSettings(
     val googleEmail: String = "",                    // boş = Google ile giriş yapılmadı
     val googleFullName: String = "",
     val lifeStage: String = "",                      // "", "PREGNANT", "BREASTFEEDING" — kalori açığı uygulanmaz
-    val healthCondition: Boolean = false             // diyabet/tansiyon/kalp/tiroid vb. — doktor notu gösterilir
+    val healthCondition: Boolean = false,            // diyabet/tansiyon/kalp/tiroid vb. — doktor notu gösterilir
+    val fastingMode: Boolean = false                 // oruç modu: öğünler sahur / iftar
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -106,6 +107,10 @@ data class AppSettings(
 
     /** epochDay için plandaki şablon adı; "" plan yok, OFF_DAY dinlenme günü. */
     /** Programdaki asıl plan (bu haftanın kaydırmaları hariç). */
+    /** Haftalık programda kullanılan antrenmanlar. */
+    val planTemplates: List<WorkoutTemplate> get() = plan.filter { it.isNotEmpty() && it != OFF_DAY }.distinct()
+        .mapNotNull { n -> allTemplates.firstOrNull { it.name == n } }
+
     fun basePlanFor(epochDay: Long): String = plan[java.time.LocalDate.ofEpochDay(epochDay).dayOfWeek.value - 1]
 
     /** O günün geçerli planı: bu hafta kaydırıldıysa kaydırılmış hali. */
@@ -169,7 +174,8 @@ class SettingsStore(context: Context) {
         googleEmail = prefs.getString("googleEmail", "") ?: "",
         googleFullName = prefs.getString("googleFullName", "") ?: "",
         lifeStage = prefs.getString("lifeStage", "") ?: "",
-        healthCondition = prefs.getBoolean("healthCondition", false)
+        healthCondition = prefs.getBoolean("healthCondition", false),
+        fastingMode = prefs.getBoolean("fastingMode", false)
     )
 
     @Synchronized
@@ -217,6 +223,7 @@ class SettingsStore(context: Context) {
             .putString("googleFullName", s.googleFullName)
             .putString("lifeStage", s.lifeStage)
             .putBoolean("healthCondition", s.healthCondition)
+            .putBoolean("fastingMode", s.fastingMode)
             .apply()
         _state.value = s
     }

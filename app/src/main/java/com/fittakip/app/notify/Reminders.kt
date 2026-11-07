@@ -44,16 +44,30 @@ object Reminders {
         WorkManager.getInstance(context).cancelUniqueWork(WORK)
     }
 
-    /** Her sabah 08:30'da günün sözü ve seri durumu. */
+    /**
+     * Her sabah 08:30'da günün görevi. WorkManager günlük işi saatlerce kaydırabildiği için
+     * tam zamanlı alarm kullanılır; alarm çalınca bildirimi gösterir ve ertesi sabahı kurar.
+     */
     fun setMorning(context: Context, on: Boolean) {
-        val wm = WorkManager.getInstance(context)
-        if (!on) { wm.cancelUniqueWork("morning"); return }
+        WorkManager.getInstance(context).cancelUniqueWork("morning")   // eski periyodik iş
+        val am = context.getSystemService(android.app.AlarmManager::class.java)
+        val pi = android.app.PendingIntent.getBroadcast(
+            context, 41, android.content.Intent(context, MorningAlarmReceiver::class.java),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        am.cancel(pi)
+        if (!on) return
         val now = LocalDateTime.now()
         var next = now.toLocalDate().atTime(8, 30)
         if (!next.isAfter(now)) next = next.plusDays(1)
-        val req = PeriodicWorkRequestBuilder<MorningWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(Duration.between(now, next).toMinutes(), TimeUnit.MINUTES).build()
-        wm.enqueueUniquePeriodicWork("morning", ExistingPeriodicWorkPolicy.UPDATE, req)
+        val at = next.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val exact = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+        try {
+            if (exact) am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi)
+            else am.setWindow(android.app.AlarmManager.RTC_WAKEUP, at, 10 * 60_000L, pi)
+        } catch (_: SecurityException) {
+            am.setWindow(android.app.AlarmManager.RTC_WAKEUP, at, 10 * 60_000L, pi)
+        }
     }
 
     /** 2 saatte bir, 09-21 arası, su hedefinin gerisindeysen hatırlatır. */
@@ -164,5 +178,17 @@ class WaterWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             Reminders.show(applicationContext, "💧 Su içme vakti", "Bugün $drank / $goal ml içtin. Bir bardak su iyi gelir.", 3)
         }
         return Result.success()
+    }
+}
+
+
+/** Sabah alarmı (ve telefon yeniden başlayınca alarmı tekrar kurma). */
+class MorningAlarmReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: android.content.Intent) {
+        val on = com.fittakip.app.data.SettingsStore(context).state.value.morningOn
+        if (intent.action != android.content.Intent.ACTION_BOOT_COMPLETED && on) {
+            WorkManager.getInstance(context).enqueue(androidx.work.OneTimeWorkRequestBuilder<MorningWorker>().build())
+        }
+        Reminders.setMorning(context, on)
     }
 }

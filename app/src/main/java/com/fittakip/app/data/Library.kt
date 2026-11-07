@@ -13,6 +13,102 @@ data class FoodItem(val name: String, val portion: String, val kcal: Int, val p:
 val FOOD_DB = listOf(
     // Kahvaltılık
     FoodItem("Haşlanmış yumurta", "1 adet", 78, 6.3, 0.6, 5.3),
+    // Ev yemekleri (porsiyon ≈ 1 tabak)
+    FoodItem("Türlü", "1 porsiyon", 180, 4.0, 18.0, 10.0),
+    FoodItem("Etli türlü", "1 porsiyon", 260, 14.0, 16.0, 15.0),
+    FoodItem("Kıymalı patates", "1 porsiyon", 300, 13.0, 25.0, 16.0),
+    FoodItem("Tas kebabı", "1 porsiyon", 320, 25.0, 10.0, 20.0),
+    FoodItem("Orman kebabı", "1 porsiyon", 340, 24.0, 15.0, 20.0),
+    FoodItem("Etli nohut", "1 porsiyon", 330, 18.0, 35.0, 13.0),
+    FoodItem("Etli kuru fasulye", "1 porsiyon", 340, 18.0, 38.0, 12.0),
+    FoodItem("Kıymalı ıspanak", "1 porsiyon", 220, 13.0, 8.0, 15.0),
+    FoodItem("Zeytinyağlı pırasa", "1 porsiyon", 160, 2.5, 18.0, 9.0),
+    FoodItem("Zeytinyağlı enginar", "1 adet", 150, 3.0, 12.0, 10.0),
+    FoodItem("Zeytinyağlı barbunya", "1 porsiyon", 210, 8.0, 25.0, 9.0),
+    FoodItem("Bamya", "1 porsiyon", 170, 4.0, 15.0, 10.0),
+    FoodItem("Patlıcan musakka", "1 porsiyon", 330, 14.0, 15.0, 24.0),
+    FoodItem("Etli biber dolması", "2 adet", 290, 14.0, 26.0, 14.0),
+    FoodItem("Zeytinyağlı yaprak sarma", "6 adet", 220, 3.0, 30.0, 10.0),
+    FoodItem("Etli lahana sarması", "1 porsiyon", 280, 14.0, 24.0, 14.0),
+    FoodItem("Fırında tavuk ve patates", "1 porsiyon", 420, 32.0, 30.0, 18.0),
+    FoodItem("Tavuk sote", "1 porsiyon", 280, 30.0, 10.0, 13.0),
+    FoodItem("Tavuk şiş", "1 porsiyon (6 parça)", 280, 38.0, 3.0, 12.0),
+    FoodItem("Kuzu pirzola", "3 adet", 400, 30.0, 0.0, 31.0),
+    FoodItem("Kavurma", "100 g", 330, 25.0, 0.0, 25.0),
+    FoodItem("Sucuklu yumurta", "1 porsiyon", 380, 20.0, 2.0, 32.0),
+    FoodItem("Sucuk", "50 g", 230, 9.0, 1.0, 21.0),
+    FoodItem("Pastırma", "30 g", 75, 9.0, 0.5, 4.0),
+    FoodItem("Levrek (ızgara)", "1 porsiyon", 300, 40.0, 0.0, 15.0),
+    FoodItem("Çupra (ızgara)", "1 porsiyon", 290, 38.0, 0.0, 15.0),
+    FoodItem("Midye dolma", "5 adet", 230, 7.0, 30.0, 9.0),
+    FoodItem("Şehriyeli pirinç pilavı", "1 porsiyon", 250, 4.5, 45.0, 6.0),
+    FoodItem("Erişte", "1 porsiyon", 300, 9.0, 52.0, 6.0),
+    FoodItem("Kısır", "1 porsiyon", 220, 5.0, 33.0, 8.0),
+    FoodItem("Patates salatası", "1 porsiyon", 200, 3.0, 25.0, 10.0),
+    FoodItem("Cacık", "1 kase", 90, 5.0, 6.0, 5.0),
+    FoodItem("Haydari", "2 yemek kaşığı", 80, 4.0, 3.0, 6.0),
+    FoodItem("Humus", "3 yemek kaşığı", 150, 5.0, 12.0, 9.0),
+    FoodItem("Mevsim salata (yağlı)", "1 kase", 110, 2.0, 8.0, 8.0),
+    FoodItem("Tarhana çorbası", "1 kase", 150, 5.0, 22.0, 4.5),
+    FoodItem("İşkembe çorbası", "1 kase", 220, 14.0, 8.0, 14.0),
+    FoodItem("Domates çorbası", "1 kase", 130, 3.0, 16.0, 6.0),
+    FoodItem("Kelle paça çorbası", "1 kase", 230, 16.0, 6.0, 15.0),
+    // Hamur işi, sokak lezzetleri
+    FoodItem("Kaşarlı pide", "1 adet", 650, 28.0, 80.0, 24.0),
+    FoodItem("Kuşbaşılı pide", "1 adet", 700, 38.0, 80.0, 25.0),
+    FoodItem("Patatesli gözleme", "1 adet", 380, 9.0, 55.0, 14.0),
+    FoodItem("Kıymalı gözleme", "1 adet", 420, 16.0, 50.0, 17.0),
+    FoodItem("Açma", "1 adet", 320, 6.0, 38.0, 16.0),
+    FoodItem("Pişi", "1 adet", 200, 4.0, 22.0, 11.0),
+    FoodItem("Börek (kol, ıspanaklı)", "1 dilim", 280, 8.0, 28.0, 15.0),
+    FoodItem("Tavuk döner porsiyon", "1 porsiyon", 450, 35.0, 30.0, 20.0),
+    FoodItem("Et döner dürüm", "1 adet", 650, 32.0, 60.0, 30.0),
+    FoodItem("Kokoreç (yarım ekmek)", "1 adet", 600, 25.0, 50.0, 33.0),
+    FoodItem("Islak hamburger", "1 adet", 300, 12.0, 32.0, 14.0),
+    FoodItem("Tantuni dürüm", "1 adet", 480, 28.0, 45.0, 20.0),
+    FoodItem("Balık ekmek", "1 adet", 450, 25.0, 50.0, 16.0),
+    FoodItem("Tost (kaşarlı)", "1 adet", 340, 15.0, 35.0, 15.0),
+    FoodItem("Tost (karışık)", "1 adet", 420, 19.0, 36.0, 21.0),
+    FoodItem("Beyti", "1 porsiyon", 650, 35.0, 40.0, 38.0),
+    FoodItem("Urfa kebap", "1 porsiyon", 550, 30.0, 25.0, 35.0),
+    FoodItem("Hünkar beğendi", "1 porsiyon", 500, 28.0, 22.0, 33.0),
+    FoodItem("Etli ekmek", "1 adet", 700, 32.0, 85.0, 25.0),
+    // Kahvaltı, ara öğün
+    FoodItem("Tulum peyniri", "30 g", 110, 7.0, 0.5, 9.0),
+    FoodItem("Labne", "2 yemek kaşığı", 80, 2.5, 2.0, 7.0),
+    FoodItem("Yeşil zeytin", "10 adet", 60, 0.5, 1.0, 6.0),
+    FoodItem("Tereyağı", "10 g", 72, 0.1, 0.0, 8.0),
+    FoodItem("Kaymak", "20 g", 110, 0.5, 0.5, 12.0),
+    FoodItem("Reçel", "1 yemek kaşığı", 50, 0.0, 13.0, 0.0),
+    FoodItem("Tahin pekmez", "2 yemek kaşığı", 180, 3.0, 18.0, 10.0),
+    FoodItem("Granola", "40 g", 180, 4.0, 26.0, 7.0),
+    FoodItem("Yoğurtlu yulaf (meyveli)", "1 kase", 330, 15.0, 50.0, 7.0),
+    FoodItem("Lavaş", "1 adet", 230, 7.0, 45.0, 2.0),
+    FoodItem("Bazlama", "1 adet", 330, 10.0, 62.0, 4.0),
+    FoodItem("Leblebi", "30 g", 110, 6.0, 17.0, 2.0),
+    FoodItem("Kaju", "30 g", 165, 5.0, 9.0, 13.0),
+    FoodItem("Ay çekirdeği (iç)", "30 g", 175, 6.0, 6.0, 15.0),
+    FoodItem("Kuru üzüm", "30 g", 90, 1.0, 23.0, 0.0),
+    FoodItem("Armut", "1 orta", 100, 0.6, 27.0, 0.2),
+    FoodItem("Mandalina", "1 orta", 50, 0.8, 13.0, 0.3),
+    FoodItem("Kavun", "1 dilim (250 g)", 85, 2.0, 20.0, 0.5),
+    FoodItem("Nar", "1 orta", 130, 2.5, 30.0, 1.5),
+    // Tatlı, içecek
+    FoodItem("Güllaç", "1 dilim", 200, 5.0, 33.0, 5.0),
+    FoodItem("Kazandibi", "1 porsiyon", 300, 7.0, 45.0, 10.0),
+    FoodItem("Revani", "1 dilim", 280, 4.0, 45.0, 9.0),
+    FoodItem("Lokum", "2 adet", 90, 0.0, 22.0, 0.0),
+    FoodItem("Helva (tahin)", "30 g", 160, 4.0, 15.0, 10.0),
+    FoodItem("Salep", "1 bardak", 220, 7.0, 35.0, 6.0),
+    FoodItem("Boza", "1 bardak", 200, 3.0, 45.0, 0.5),
+    FoodItem("Şalgam", "1 bardak", 20, 0.5, 4.0, 0.0),
+    FoodItem("Soda (sade)", "1 şişe", 0, 0.0, 0.0, 0.0),
+    FoodItem("Latte (yarım yağlı)", "orta boy", 150, 9.0, 14.0, 6.0),
+    FoodItem("Filtre kahve", "1 kupa", 5, 0.3, 0.0, 0.0),
+    // Sahur / iftar
+    FoodItem("İftar çorbası + hurma", "1 kase + 2 hurma", 220, 7.0, 38.0, 5.0),
+    FoodItem("Ramazan pidesi", "1/4 pide", 250, 8.0, 50.0, 2.0),
+    FoodItem("Sahurluk yumurta + peynir + ekmek", "1 tabak", 480, 24.0, 40.0, 24.0),
     FoodItem("Omlet", "2 yumurta", 190, 13.0, 1.0, 15.0),
     FoodItem("Menemen", "1 porsiyon", 250, 12.0, 10.0, 18.0),
     FoodItem("Beyaz peynir", "30 g", 80, 5.0, 0.5, 6.5),
@@ -108,16 +204,25 @@ enum class Meal(val label: String, val emoji: String) {
     BREAKFAST("Kahvaltı", "🍳"),
     LUNCH("Öğle", "🥗"),
     DINNER("Akşam", "🍽️"),
-    SNACK("Ara öğün", "🍎");
+    SNACK("Ara öğün", "🍎"),
+    SAHUR("Sahur", "🌙"),
+    IFTAR("İftar", "🌅");
 
     companion object {
         fun from(name: String) = entries.firstOrNull { it.name == name } ?: SNACK
-        fun forHour(h: Int) = when (h) {
+        fun forHour(h: Int, fasting: Boolean = false) = if (fasting) when (h) {
+            in 0..6 -> SAHUR
+            in 17..23 -> IFTAR
+            else -> SNACK
+        } else when (h) {
             in 5..10 -> BREAKFAST
             in 11..15 -> LUNCH
             in 18..22 -> DINNER
             else -> SNACK
         }
+
+        /** Seçilebilir öğünler: oruç modunda sahur / iftar / ara öğün. */
+        fun choices(fasting: Boolean) = if (fasting) listOf(SAHUR, IFTAR, SNACK) else listOf(BREAKFAST, LUNCH, DINNER, SNACK)
     }
 }
 
