@@ -228,8 +228,12 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
 
         item {
             if (editProfile || state.profile == null) {
-                ProfileForm(state.profile, onCancel = { editProfile = false }) {
-                    vm.saveProfile(it)
+                ProfileForm(
+                    state.profile, onCancel = { editProfile = false },
+                    initialLifeStage = settings.lifeStage, initialHealth = settings.healthCondition
+                ) { prof, stage, health ->
+                    vm.saveProfile(prof)
+                    vm.setSafety(stage, health)
                     editProfile = false
                 }
             } else {

@@ -72,7 +72,34 @@ object Calculator {
 
     /** Ayarlardaki kalori düzeltmesi ve makro tercihleriyle. */
     fun calculate(p: Profile, st: AppSettings): CalorieResult =
-        calculate(p.male, p.age, p.heightCm, p.weightKg, p.activity, Goal.from(p.goal), st.kcalAdjust, st.proteinPerKg, st.fatPct)
+        calculate(p.male, p.age, p.heightCm, p.weightKg, p.activity, effectiveGoal(p, st.lifeStage), st.kcalAdjust, st.proteinPerKg, st.fatPct)
+
+    /** Hamilelik ve emzirmede kalori açığı uygulanmaz: "yağ yak" seçili olsa bile koruma kalorisi verilir. */
+    fun effectiveGoal(p: Profile, lifeStage: String): Goal {
+        val g = Goal.from(p.goal)
+        return if (!p.male && lifeStage.isNotEmpty() && g == Goal.CUT) Goal.MAINTAIN else g
+    }
+
+    fun bmiOf(kg: Double, cm: Double): Double = kg / ((cm / 100) * (cm / 100))
+
+    /** Kullanıcıya gösterilecek güvenlik uyarıları (boşsa her şey yolunda). */
+    fun safetyWarnings(
+        male: Boolean, cm: Double?, kg: Double?, target: Double?, goal: Goal,
+        lifeStage: String, healthCondition: Boolean
+    ): List<String> = buildList {
+        if (!male && lifeStage.isNotEmpty()) add(
+            (if (lifeStage == "PREGNANT") "Hamilelikte" else "Emzirirken") +
+                " kalori açığı uygulamıyorum; \"yağ yak\" seçsen de koruma kalorisi gösteririm. Bu dönemde kalori ihtiyacın artar, hedefini doktorunla ya da diyetisyeninle belirle."
+        )
+        if (cm != null && cm in 100.0..250.0) {
+            val (lo, hi) = idealWeightRange(cm)
+            if (kg != null && bmiOf(kg, cm) < 18.5 && goal == Goal.CUT)
+                add("Vücut kitle indeksin ${"%.1f".format(bmiOf(kg, cm))}, yani zayıf aralıktasın. Kilo vermek yerine korumayı ya da kas kazanmayı öneririm.")
+            if (target != null && target < lo)
+                add("Hedef kilon ${fmtKg(target)} kg, boyuna göre sağlıklı aralığın (${lo.roundToInt()}–${hi.roundToInt()} kg) altında. Tahminleri gösteririm ama bu kiloya inmeni önermem.")
+        }
+        if (healthCondition) add("Bir rahatsızlığın olduğu için kalori, karbonhidrat ve antrenman hedeflerini doktorunla birlikte gözden geçir. Buradaki hesaplar genel tahmindir.")
+    }
 
     /**
      * Gerçek kalori ihtiyacı: son 28 günde ortalama alınan kalori − (kilo eğimi × 7700 kcal/kg).

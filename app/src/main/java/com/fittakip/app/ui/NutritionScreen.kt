@@ -87,8 +87,12 @@ fun NutritionScreen(vm: AppViewModel) {
 
         if (p == null || editing) {
             item {
-                ProfileForm(initial = p, onCancel = if (p != null) { { editing = false } } else null) {
-                    vm.saveProfile(it)
+                ProfileForm(
+                    initial = p, onCancel = if (p != null) { { editing = false } } else null,
+                    initialLifeStage = settings.lifeStage, initialHealth = settings.healthCondition
+                ) { prof, stage, health ->
+                    vm.saveProfile(prof)
+                    vm.setSafety(stage, health)
                     editing = false
                 }
             }
@@ -104,6 +108,8 @@ fun NutritionScreen(vm: AppViewModel) {
                 )
             }
         }
+        val warnings = Calculator.safetyWarnings(p.male, p.heightCm, p.weightKg, p.targetWeightKg, Goal.from(p.goal), settings.lifeStage, settings.healthCondition)
+        if (warnings.isNotEmpty()) item { SafetyNotice(warnings) }
         item { HeroCard(p, result, foods, settings.kcalAdjust, dayWater, waterGoal) { editing = true } }
         item { WaterCard(dayWater, waterGoal, { vm.addWater(it) }, { vm.undoWater() }) }
         item {
@@ -644,7 +650,13 @@ private fun FoodRow(f: FoodEntry, onClick: () -> Unit, onDelete: () -> Unit) {
 }
 
 @Composable
-fun ProfileForm(initial: Profile?, onCancel: (() -> Unit)?, onSave: (Profile) -> Unit) {
+fun ProfileForm(
+    initial: Profile?, onCancel: (() -> Unit)?,
+    initialLifeStage: String = "", initialHealth: Boolean = false,
+    onSave: (Profile, String, Boolean) -> Unit
+) {
+    var lifeStage by rememberSaveable { mutableStateOf(initialLifeStage) }
+    var health by rememberSaveable { mutableStateOf(initialHealth) }
     var male by rememberSaveable { mutableStateOf(initial?.male ?: true) }
     var age by rememberSaveable { mutableStateOf(initial?.age?.toString() ?: "") }
     var height by rememberSaveable { mutableStateOf(initial?.heightCm?.clean() ?: "") }
@@ -664,9 +676,10 @@ fun ProfileForm(initial: Profile?, onCancel: (() -> Unit)?, onSave: (Profile) ->
             HintText("Günlük kalori, makro ve su hedefini bu bilgilerle hesaplıyorum. Sonra istediğin zaman değiştirebilirsin.")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SelectCard(male, { male = true }, "Erkek", Modifier.weight(1f))
+            SelectCard(male, { male = true; lifeStage = "" }, "Erkek", Modifier.weight(1f))
             SelectCard(!male, { male = false }, "Kadın", Modifier.weight(1f))
         }
+        if (!male) LifeStagePicker(lifeStage) { lifeStage = it; if (it.isNotEmpty() && goal == Goal.CUT.name) goal = Goal.MAINTAIN.name }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NumField(age, { age = it }, "Yaş", Modifier.weight(1f))
             NumField(height, { height = it }, "Boy (cm)", Modifier.weight(1f))
@@ -695,9 +708,12 @@ fun ProfileForm(initial: Profile?, onCancel: (() -> Unit)?, onSave: (Profile) ->
                     Goal.MAINTAIN -> "⚖️" to "±0 kcal"
                     Goal.BULK -> "💪" to "+300 kcal"
                 }
-                SelectCard(goal == g.name, { goal = g.name }, "$emoji ${g.label}", Modifier.weight(1f), delta)
+                val blocked = g == Goal.CUT && !male && lifeStage.isNotEmpty()
+                SelectCard(goal == g.name, { if (!blocked) goal = g.name }, "$emoji ${g.label}", Modifier.weight(1f), if (blocked) "kapalı" else delta)
             }
         }
+        HealthToggle(health) { health = it }
+        SafetyNotice(Calculator.safetyWarnings(male, height.toNum(), weight.toNum(), target.toNum(), Goal.from(goal), lifeStage, health))
 
         val a = age.toIntOrNull()
         val h = height.toNum()
@@ -715,10 +731,55 @@ fun ProfileForm(initial: Profile?, onCancel: (() -> Unit)?, onSave: (Profile) ->
                     Profile(
                         male = male, age = a!!, heightCm = h!!, weightKg = w!!,
                         activity = activity, goal = goal, targetWeightKg = t
-                    )
+                    ),
+                    if (male) "" else lifeStage, health
                 )
             },
             enabled = valid
         )
+    }
+}
+
+
+/** Hamilelik / emzirme seçimi (sadece kadınlarda gösterilir). */
+@Composable
+fun LifeStagePicker(value: String, onChange: (String) -> Unit) {
+    Text("Hamile misin ya da emziriyor musun?", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SelectCard(value.isEmpty(), { onChange("") }, "Hayır", Modifier.weight(1f))
+        SelectCard(value == "PREGNANT", { onChange("PREGNANT") }, "🤰 Hamileyim", Modifier.weight(1f))
+        SelectCard(value == "BREASTFEEDING", { onChange("BREASTFEEDING") }, "🍼 Emziriyorum", Modifier.weight(1f))
+    }
+}
+
+/** Kronik rahatsızlık işareti. */
+@Composable
+fun HealthToggle(value: Boolean, onChange: (Boolean) -> Unit) {
+    SelectCard(
+        value, { onChange(!value) },
+        (if (value) "✓ " else "") + "Bir rahatsızlığım var",
+        Modifier.fillMaxWidth(),
+        "Diyabet, tansiyon, kalp, tiroid ya da düzenli ilaç"
+    )
+}
+
+/** Turuncu uyarı kartı. */
+@Composable
+fun SafetyNotice(warnings: List<String>) {
+    if (warnings.isEmpty()) return
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = FitColors.Orange.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, FitColors.Orange.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            warnings.forEach { w ->
+                Row {
+                    Text("⚠️", modifier = Modifier.padding(end = 8.dp))
+                    Text(w, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
     }
 }

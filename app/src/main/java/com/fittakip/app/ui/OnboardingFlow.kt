@@ -72,6 +72,8 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
     var target by rememberSaveable { mutableStateOf("") }
     var goal by rememberSaveable { mutableStateOf(Goal.CUT.name) }
     var activity by rememberSaveable { mutableDoubleStateOf(1.55) }
+    var lifeStage by rememberSaveable { mutableStateOf("") }
+    var health by rememberSaveable { mutableStateOf(false) }
 
     // Program
     var level by rememberSaveable { mutableIntStateOf(1) }
@@ -112,7 +114,7 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
             targetWeightKg = target.toNum()
         )
         val google = if (gEmail.isNotBlank()) GoogleUser(gFirst, gFull, gEmail) else null
-        vm.completeOnboarding(name, google, p, plan, rot, unavailable, days.size)
+        vm.completeOnboarding(name, google, p, plan, rot, unavailable, days.size, if (male) "" else lifeStage, health)
         onDone(preset == null)
     }
 
@@ -143,9 +145,10 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
                     TextInput(name, { name = it }, "Adın")
                     Label("Cinsiyet")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SelectCard(male, { male = true }, "Erkek", Modifier.weight(1f))
+                        SelectCard(male, { male = true; lifeStage = "" }, "Erkek", Modifier.weight(1f))
                         SelectCard(!male, { male = false }, "Kadın", Modifier.weight(1f))
                     }
+                    if (!male) LifeStagePicker(lifeStage) { lifeStage = it; if (it.isNotEmpty() && goal == Goal.CUT.name) goal = Goal.MAINTAIN.name }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Stepper(age, { age = it }, "Yaş", 1.0, Modifier.weight(1f))
                         Stepper(height, { height = it }, "Boy (cm)", 1.0, Modifier.weight(1f))
@@ -157,13 +160,17 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
                     Label("Hedefin")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Goal.entries.forEach { g ->
-                            SelectCard(goal == g.name, { goal = g.name }, g.label, Modifier.weight(1f))
+                            val blocked = g == Goal.CUT && !male && lifeStage.isNotEmpty()
+                            SelectCard(goal == g.name, { if (!blocked) goal = g.name }, g.label, Modifier.weight(1f), if (blocked) "kapalı" else null)
                         }
                     }
                     Label("Gün içi hareketin")
                     ACTIVITY_LEVELS.forEach { a ->
                         SelectCard(activity == a.factor, { activity = a.factor }, a.label, Modifier.fillMaxWidth())
                     }
+                    Label("Sağlık")
+                    HealthToggle(health) { health = it }
+                    SafetyNotice(Calculator.safetyWarnings(male, height.toNum(), weight.toNum(), target.toNum(), Goal.valueOf(goal), if (male) "" else lifeStage, health))
                 }
                 2 -> StepScaffold(
                     title = "Antrenman programın",
@@ -245,7 +252,8 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
                         male = male, age = age.toNum()?.toInt() ?: 25, heightCm = height.toNum() ?: 175.0,
                         weightKg = weight.toNum() ?: 75.0, activity = activity, goal = goal, targetWeightKg = target.toNum()
                     )
-                    val r = Calculator.calculate(p, vm.settings.value)
+                    val r = Calculator.calculate(p, vm.settings.value.copy(lifeStage = if (male) "" else lifeStage))
+                    val warnings = Calculator.safetyWarnings(male, p.heightCm, p.weightKg, p.targetWeightKg, Goal.valueOf(goal), if (male) "" else lifeStage, health)
                     StepScaffold(
                         title = "Hazırsın${if (name.isNotBlank()) ", $name" else ""}! 🎉",
                         subtitle = "Her şeyi sonra Ayarlar'dan ve Program ekranından değiştirebilirsin.",
@@ -257,6 +265,8 @@ fun OnboardingFlow(vm: AppViewModel, onDone: (openProgram: Boolean) -> Unit) {
                             Text("${r.target} kcal", color = dark, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 36.sp))
                             Text("Protein ${r.proteinG} g · Yağ ${r.fatG} g · Karbonhidrat ${r.carbG} g", color = dark, style = MaterialTheme.typography.titleSmall)
                         }
+                        SafetyNotice(warnings)
+                        HintText("Bu hesaplar genel tahmindir, tıbbi tavsiye değildir.")
                         if (preset != null) {
                             Label(if (rot) "Antrenman sıran" else "Haftan")
                             PlanPreview(plan)

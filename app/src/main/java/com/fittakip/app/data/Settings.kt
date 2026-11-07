@@ -43,7 +43,9 @@ data class AppSettings(
     val weekOverrides: String = "",                  // "20400=Upper A;20401=OFF" — sadece içinde bulunulan hafta
     val userName: String = "",
     val googleEmail: String = "",                    // boş = Google ile giriş yapılmadı
-    val googleFullName: String = ""
+    val googleFullName: String = "",
+    val lifeStage: String = "",                      // "", "PREGNANT", "BREASTFEEDING" — kalori açığı uygulanmaz
+    val healthCondition: Boolean = false             // diyabet/tansiyon/kalp/tiroid vb. — doktor notu gösterilir
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -161,7 +163,9 @@ class SettingsStore(context: Context) {
         weekOverrides = prefs.getString("weekOverrides", "") ?: "",
         userName = prefs.getString("userName", "") ?: "",
         googleEmail = prefs.getString("googleEmail", "") ?: "",
-        googleFullName = prefs.getString("googleFullName", "") ?: ""
+        googleFullName = prefs.getString("googleFullName", "") ?: "",
+        lifeStage = prefs.getString("lifeStage", "") ?: "",
+        healthCondition = prefs.getBoolean("healthCondition", false)
     )
 
     @Synchronized
@@ -207,6 +211,8 @@ class SettingsStore(context: Context) {
             .putString("userName", s.userName)
             .putString("googleEmail", s.googleEmail)
             .putString("googleFullName", s.googleFullName)
+            .putString("lifeStage", s.lifeStage)
+            .putBoolean("healthCondition", s.healthCondition)
             .apply()
         _state.value = s
     }

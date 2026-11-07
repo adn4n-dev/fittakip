@@ -522,7 +522,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Kurulum sihirbazının sonunda: profil, ilk tartı, program ve salon tercihleri tek seferde kaydedilir. */
     fun completeOnboarding(
         name: String, google: com.fittakip.app.auth.GoogleUser?, profile: Profile,
-        plan: List<String>, rotation: Boolean, unavailable: Set<String>, daysPerWeek: Int
+        plan: List<String>, rotation: Boolean, unavailable: Set<String>, daysPerWeek: Int,
+        lifeStage: String = "", healthCondition: Boolean = false
     ) {
         viewModelScope.launch {
             dao.saveProfile(profile)
@@ -532,6 +533,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 onboarded = true, programSeeded = true,
                 userName = name.trim(),
+                lifeStage = if (profile.male) "" else lifeStage, healthCondition = healthCondition,
                 googleEmail = google?.email ?: it.googleEmail,
                 googleFullName = google?.fullName ?: it.googleFullName,
                 weekPlan = plan.joinToString(";"),
@@ -550,6 +552,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun unlinkGoogle() = store.update { it.copy(googleEmail = "", googleFullName = "") }
 
     fun setUserName(name: String) = store.update { it.copy(userName = name.trim()) }
+
+    fun setSafety(lifeStage: String, healthCondition: Boolean) =
+        store.update { it.copy(lifeStage = lifeStage, healthCondition = healthCondition) }
 
     // ---------- Vücut ----------
 
