@@ -51,6 +51,8 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+        // LiteRT-LM (telefondaki yapay zekâ) daha yeni bir Kotlin ile derlenmiş; meta veri sürüm kontrolünü atla
+        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
     lint {
         checkReleaseBuilds = false
