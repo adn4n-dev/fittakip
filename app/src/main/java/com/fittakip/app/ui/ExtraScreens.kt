@@ -526,6 +526,16 @@ private fun AccountCard(vm: AppViewModel, settings: com.fittakip.app.data.AppSet
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         DriveCard(vm)
+        var keyDialog by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("📷 Fotoğraftan kalori", style = MaterialTheme.typography.titleSmall)
+                HintText(if (settings.anthropicKey.isBlank()) "Claude API anahtarı girilmedi" else "Anahtar kayıtlı (…${settings.anthropicKey.takeLast(4)})")
+            }
+            if (settings.anthropicKey.isBlank()) TextButton(onClick = { keyDialog = true }) { Text("Ekle") }
+            else TextButton(onClick = { vm.updateSettings { it.copy(anthropicKey = "") } }) { Text("Sil", color = MaterialTheme.colorScheme.error) }
+        }
+        if (keyDialog) ApiKeyDialog(onDismiss = { keyDialog = false }) { k -> vm.updateSettings { it.copy(anthropicKey = k.trim()) }; keyDialog = false }
         TextButton(onClick = { confirmRedo = true }) { Text("Kurulum sihirbazını yeniden başlat") }
     }
     if (confirmRedo) AlertDialog(

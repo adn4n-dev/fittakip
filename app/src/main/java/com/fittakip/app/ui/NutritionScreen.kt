@@ -213,6 +213,8 @@ fun NutritionScreen(vm: AppViewModel) {
     if (sheet) {
         AddFoodSheet(
             fasting = settings.fastingMode,
+            apiKey = settings.anthropicKey,
+            onSaveKey = { k -> vm.updateSettings { it.copy(anthropicKey = k.trim()) } },
             history = allFoods,
             customFoods = customFoods,
             savedMeals = savedMeals,
@@ -405,6 +407,8 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
 @Composable
 private fun AddFoodSheet(
     fasting: Boolean,
+    apiKey: String,
+    onSaveKey: (String) -> Unit,
     history: List<FoodEntry>,
     customFoods: List<CustomFood>,
     savedMeals: List<com.fittakip.app.data.SavedMeal>,
@@ -455,26 +459,91 @@ private fun AddFoodSheet(
             (e as? com.fittakip.app.data.OnlineFoods.OnlineException)?.message ?: "İnternet yok; sadece telefondaki liste aranıyor."
         }
     }
+    // ---- Barkod ----
+    var scanMsg by remember { mutableStateOf<String?>(null) }   // arama kutusunun hemen altında görünür
+    var manualBarcode by remember { mutableStateOf(false) }
+    fun lookupBarcode(code: String) {
+        scanMsg = "🔎 $code aranıyor…"
+        scope.launch {
+            scanMsg = try {
+                val item = com.fittakip.app.data.OnlineFoods.byBarcode(code)
+                if (item != null) { picked = item; mult = 1.0; null }
+                else "Bu barkod ($code) veritabanında yok. Adıyla aramayı ya da \"Elle gir\"i dene."
+            } catch (e: Exception) { "Barkod aranamadı: ${e.message ?: "internet yok"}" }
+        }
+    }
     fun scanBarcode() {
         val opts = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
             .setBarcodeFormats(
                 com.google.mlkit.vision.barcode.common.Barcode.FORMAT_EAN_13, com.google.mlkit.vision.barcode.common.Barcode.FORMAT_EAN_8,
                 com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_A, com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_E
-            ).build()
-        com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, opts).startScan()
-            .addOnSuccessListener { b ->
-                val code = b.rawValue ?: return@addOnSuccessListener
-                onlineState = "loading"
-                scope.launch {
-                    onlineState = try {
-                        val item = com.fittakip.app.data.OnlineFoods.byBarcode(code)
-                        if (item != null) { picked = item; mult = 1.0; "" } else "Barkod ($code) veritabanında yok. \"Elle gir\" ile ekleyebilirsin."
-                    } catch (e: Exception) { "Barkod aranamadı: ${e.message}" }
+            ).enableAutoZoom().build()
+        val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, opts)
+        fun start() {
+            scanner.startScan()
+                .addOnSuccessListener { b -> b.rawValue?.let { lookupBarcode(it) } ?: run { scanMsg = "Barkod okunamadı, tekrar dene." } }
+                .addOnCanceledListener { scanMsg = null }
+                .addOnFailureListener { scanMsg = "Barkod okuyucu açılamadı (${it.message}). Barkodu elle yazabilirsin." ; manualBarcode = true }
+        }
+        // Okuyucu Google Play Hizmetleri'nin ayrı bir modülü: telefonda yoksa önce indir.
+        val installer = com.google.android.gms.common.moduleinstall.ModuleInstall.getClient(context)
+        installer.areModulesAvailable(scanner)
+            .addOnSuccessListener { r ->
+                if (r.areModulesAvailable()) start()
+                else {
+                    scanMsg = "⬇️ Barkod okuyucu ilk kullanım için indiriliyor…"
+                    installer.installModules(com.google.android.gms.common.moduleinstall.ModuleInstallRequest.newBuilder().addApi(scanner).build())
+                        .addOnSuccessListener { scanMsg = null; start() }
+                        .addOnFailureListener { scanMsg = "Barkod okuyucu indirilemedi (${it.message}). Barkodu elle yazabilirsin."; manualBarcode = true }
                 }
             }
-            .addOnFailureListener { onlineState = "Barkod okuyucu açılamadı: ${it.message}" }
+            .addOnFailureListener { start() }
     }
 
+    // ---- Fotoğraftan kalori ----
+    var askKey by remember { mutableStateOf(false) }
+    var photoBusy by remember { mutableStateOf(false) }
+    var photoResult by remember { mutableStateOf<com.fittakip.app.data.FoodVision.Result?>(null) }
+    var photoMsg by remember { mutableStateOf<String?>(null) }
+    var pendingCamera by remember { mutableStateOf<android.net.Uri?>(null) }
+    fun analyze(uri: android.net.Uri) {
+        photoBusy = true; photoMsg = null; photoResult = null
+        scope.launch {
+            try {
+                val r = com.fittakip.app.data.FoodVision.analyze(context, uri, apiKey)
+                if (r.items.isEmpty()) photoMsg = r.note.ifBlank { "Fotoğrafta yiyecek bulamadım." } else photoResult = r
+            } catch (e: Exception) {
+                photoMsg = (e as? com.fittakip.app.data.FoodVision.VisionException)?.message ?: "İnternet yok ya da bağlantı koptu."
+            }
+            photoBusy = false
+        }
+    }
+    val takePhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
+        val u = pendingCamera
+        if (ok && u != null) analyze(u)
+    }
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { u ->
+        u?.let { analyze(it) }
+    }
+    fun openCamera() {
+        val dir = java.io.File(context.cacheDir, "food").apply { mkdirs() }
+        val f = java.io.File(dir, "tabak.jpg")
+        val u = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", f)
+        pendingCamera = u
+        takePhoto.launch(u)
+    }
+
+    if (askKey) ApiKeyDialog(onDismiss = { askKey = false }) { k -> onSaveKey(k); askKey = false }
+    if (manualBarcode) {
+        var code by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { manualBarcode = false },
+            title = { Text("Barkodu yaz") },
+            text = { NumField(code, { code = it.filter { ch -> ch.isDigit() } }, "Paketin altındaki numara (8–13 hane)", Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(enabled = code.length in 8..14, onClick = { manualBarcode = false; lookupBarcode(code) }) { Text("Ara") } },
+            dismissButton = { TextButton(onClick = { manualBarcode = false }) { Text("Vazgeç") } }
+        )
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         LazyColumn(
             Modifier.fillMaxHeight(0.92f),
@@ -541,6 +610,38 @@ private fun AddFoodSheet(
                         trailingIcon = { IconButton(onClick = { scanBarcode() }) { Icon(Icons.Rounded.QrCodeScanner, "Barkod okut") } },
                         singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()
                     )
+                }
+                scanMsg?.let { m ->
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            HintText(m, Modifier.weight(1f))
+                            TextButton(onClick = { manualBarcode = true }) { Text("Elle yaz") }
+                        }
+                    }
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SecondaryButton("📷 Fotoğraf çek", enabled = !photoBusy, modifier = Modifier.weight(1f),
+                            onClick = { if (apiKey.isBlank()) askKey = true else openCamera() })
+                        SecondaryButton("🖼️ Galeriden", enabled = !photoBusy, modifier = Modifier.weight(1f),
+                            onClick = { if (apiKey.isBlank()) askKey = true else pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+                    }
+                }
+                if (photoBusy) item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Tabağına bakıyorum…")
+                    }
+                }
+                photoMsg?.let { m -> item { Text(m, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }
+                photoResult?.let { r ->
+                    item {
+                        PhotoResultCard(r, meal, onRemove = { g -> photoResult = r.copy(items = r.items - g) }, onDismiss = { photoResult = null }) { list ->
+                            list.forEach { g -> onAdd("${g.name} (fotoğraf)", g.kcal, g.p, g.c, g.f, meal) }
+                            onDismiss()
+                        }
+                    }
                 }
                 if (query.isBlank()) {
                     if (savedMeals.isNotEmpty()) {
@@ -851,4 +952,57 @@ fun SafetyNotice(warnings: List<String>) {
             }
         }
     }
+}
+
+
+/** Fotoğraftan çıkan tahminler: istemediğini çıkar, kalanını tek dokunuşla öğüne ekle. */
+@Composable
+private fun PhotoResultCard(
+    r: com.fittakip.app.data.FoodVision.Result, meal: Meal,
+    onRemove: (com.fittakip.app.data.FoodVision.Guess) -> Unit, onDismiss: () -> Unit,
+    onAddAll: (List<com.fittakip.app.data.FoodVision.Guess>) -> Unit
+) {
+    FitCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("📷 Tabağında gördüklerim", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Kapat") }
+        }
+        r.items.forEach { g ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(g.name, style = MaterialTheme.typography.titleSmall)
+                    HintText("${g.portion} · P ${g.p.roundToInt()} · K ${g.c.roundToInt()} · Y ${g.f.roundToInt()}")
+                }
+                Text("${g.kcal} kcal", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
+                IconButton(onClick = { onRemove(g) }) { Icon(Icons.Rounded.Close, "${g.name} çıkar") }
+            }
+        }
+        if (r.note.isNotBlank()) HintText("💬 ${r.note}")
+        HintText("Bu bir tahmin: porsiyon gözle kestirildiği için ±%20-30 sapabilir. Ekledikten sonra kayda dokunup porsiyonu düzeltebilirsin.")
+        if (r.items.isNotEmpty()) PrimaryButton("Hepsini ${meal.label} öğününe ekle · ${r.items.sumOf { it.kcal }} kcal", onClick = { onAddAll(r.items) }, icon = Icons.Rounded.Add)
+    }
+}
+
+/** Kullanıcının kendi Claude API anahtarı (fotoğraftan kalori için). */
+@Composable
+fun ApiKeyDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var key by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("📷 Fotoğraftan kalori") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Tabağının fotoğrafını Claude (Anthropic) inceler ve kalorisini tahmin eder. Bunun için kendi Claude API anahtarın gerekiyor:", style = MaterialTheme.typography.bodyMedium)
+                HintText("1. console.anthropic.com adresinde hesap aç\n2. Billing'den biraz kredi yükle (fotoğraf başına yaklaşık 1 kuruş-1 cent)\n3. API Keys > Create Key, çıkan anahtarı buraya yapıştır")
+                OutlinedTextField(
+                    value = key, onValueChange = { key = it }, singleLine = true, label = { Text("sk-ant-…") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                HintText("Anahtar sadece bu telefonda saklanır, yedeklere girmez. Fotoğraf sadece analiz için Anthropic'e gönderilir; diğer kayıtların gönderilmez.")
+            }
+        },
+        confirmButton = { TextButton(enabled = key.trim().startsWith("sk-"), onClick = { onSave(key) }) { Text("Kaydet") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } }
+    )
 }
