@@ -167,8 +167,12 @@ object Calculator {
      * Çift ilerleme (double progression): hedef aralığın üst sınırına tüm setlerde ulaştıysan ağırlık artır,
      * ulaşmadıysan aynı ağırlıkla tekrar artırmaya devam et.
      */
-    fun rangeSuggestion(history: List<WorkoutSet>, item: com.fittakip.app.data.PlanItem, today: Long): String? {
-        val past = history.filter { it.counted() && it.exercise.equals(item.exercise, true) && it.epochDay < today }
+    fun rangeSuggestion(history: List<WorkoutSet>, item: com.fittakip.app.data.PlanItem, today: Long): String? =
+        rangeSuggestionFrom(history.filter { it.counted() && it.exercise.equals(item.exercise, true) && it.epochDay < today }, item)
+
+    /** [past]: bu hareketin (bağlamı süzülmüş) geçmiş sayılan setleri. */
+    fun rangeSuggestionFrom(pastIn: List<WorkoutSet>, item: com.fittakip.app.data.PlanItem): String? {
+        val past = pastIn.filter { it.counted() }
         if (past.isEmpty()) return "İlk sefer: ${item.label} hedefle, son tekrarlar zorlasın ama form bozulmasın."
         val lastDay = past.maxOf { it.epochDay }
         val last = past.filter { it.epochDay == lastDay }

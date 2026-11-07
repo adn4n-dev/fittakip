@@ -7,11 +7,11 @@ import org.json.JSONObject
 /** Tüm verileri tek bir JSON dosyasına yazar / geri yükler. */
 object Backup {
 
-    suspend fun export(db: AppDatabase): String {
+    suspend fun export(db: AppDatabase, context: android.content.Context? = null): String {
         val d = db.dao()
         val root = JSONObject()
         root.put("app", "FitTakip")
-        root.put("version", 3)
+        root.put("version", 4)
         root.put("profile", JSONArray().apply {
             d.dumpProfile().forEach {
                 put(JSONObject().put("male", it.male).put("age", it.age).put("heightCm", it.heightCm)
@@ -67,6 +67,7 @@ object Backup {
         root.put("savedMeals", JSONArray().apply {
             d.dumpSavedMeals().forEach { put(JSONObject().put("name", it.name).put("items", it.items)) }
         })
+        context?.let { root.put("settings", exportPrefs(it)) }
         return root.toString(2)
     }
 
@@ -78,9 +79,11 @@ object Backup {
     }
 
     /** Mevcut verilerin yerine yedeği koyar. Hatalı dosyada hiçbir şeyi silmez. */
-    suspend fun import(db: AppDatabase, json: String) {
+    /** Yedekte "settings" varsa ve [context] verildiyse program/şablon/ayarlar da geri yüklenir; yoksa mevcut ayarlar korunur. */
+    suspend fun import(db: AppDatabase, json: String, context: android.content.Context? = null) {
         val root = JSONObject(json)
         require(root.optString("app") == "FitTakip") { "Bu dosya bir FitTakip yedeği değil." }
+        if (context != null) root.optJSONObject("settings")?.let { importPrefs(context, it) }
         val d = db.dao()
 
         val profiles = root.optJSONArray("profile").mapObjects {
@@ -147,5 +150,44 @@ object Backup {
         d.clearProfile(); d.clearFoods(); d.clearSets(); d.clearWeights()
         d.clearWater(); d.clearCardio(); d.clearMeasures()
         d.clearHabits(); d.clearFasts(); d.clearSessions(); d.clearCustomFoods(); d.clearPhotos(); d.clearSavedMeals()
+    }
+
+    /** Cihaza bağlı olanlar (yedek klasörü izni, açık antrenman) yedeğe girmez. */
+    private val DEVICE_ONLY = setOf("autoBackupUri", "lastAutoBackup", "sessionStart")
+
+    /** SharedPreferences'taki tüm ayarlar (program, şablonlar, salon, notlar...) türleriyle birlikte. */
+    fun exportPrefs(context: android.content.Context): JSONObject {
+        val o = JSONObject()
+        context.getSharedPreferences(SettingsStore.PREFS, android.content.Context.MODE_PRIVATE).all.forEach { (k, v) ->
+            if (k in DEVICE_ONLY || v == null) return@forEach
+            val e = when (v) {
+                is Boolean -> JSONObject().put("t", "b").put("v", v)
+                is Int -> JSONObject().put("t", "i").put("v", v)
+                is Long -> JSONObject().put("t", "l").put("v", v)
+                is Float -> JSONObject().put("t", "f").put("v", v.toDouble())
+                is String -> JSONObject().put("t", "s").put("v", v)
+                is Set<*> -> JSONObject().put("t", "ss").put("v", JSONArray(v.map { it.toString() }))
+                else -> null
+            }
+            e?.let { o.put(k, it) }
+        }
+        return o
+    }
+
+    fun importPrefs(context: android.content.Context, o: JSONObject) {
+        val ed = context.getSharedPreferences(SettingsStore.PREFS, android.content.Context.MODE_PRIVATE).edit()
+        o.keys().forEach { k ->
+            if (k in DEVICE_ONLY) return@forEach
+            val e = o.optJSONObject(k) ?: return@forEach
+            when (e.optString("t")) {
+                "b" -> ed.putBoolean(k, e.getBoolean("v"))
+                "i" -> ed.putInt(k, e.getInt("v"))
+                "l" -> ed.putLong(k, e.getLong("v"))
+                "f" -> ed.putFloat(k, e.getDouble("v").toFloat())
+                "s" -> ed.putString(k, e.getString("v"))
+                "ss" -> ed.putStringSet(k, e.getJSONArray("v").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() })
+            }
+        }
+        ed.commit()
     }
 }

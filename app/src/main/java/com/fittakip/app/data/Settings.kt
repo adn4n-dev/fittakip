@@ -118,7 +118,11 @@ data class AppSettings(
 
 /** Küçük ayarlar SharedPreferences'ta; değişiklikler StateFlow ile ekrana akar. */
 class SettingsStore(context: Context) {
-    private val prefs = context.getSharedPreferences("fit_settings", Context.MODE_PRIVATE)
+    companion object { const val PREFS = "fit_settings" }
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** Yedekten geri yükleme sonrası ayarları diskten yeniden oku. */
+    fun reload() { _state.value = read() }
     private val _state = MutableStateFlow(read())
     val state: StateFlow<AppSettings> = _state
 

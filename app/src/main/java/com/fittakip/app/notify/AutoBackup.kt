@@ -29,7 +29,7 @@ object AutoBackup {
         val store = SettingsStore(context)
         val tree = store.state.value.autoBackupUri.takeIf { it.isNotEmpty() }?.let(Uri::parse) ?: return false
         return try {
-            val json = Backup.export(AppDatabase.get(context))
+            val json = Backup.export(AppDatabase.get(context), context)
             val dir = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
             val file = DocumentsContract.createDocument(
                 context.contentResolver, dir, "application/json", "fittakip-otomatik-${LocalDate.now()}.json"

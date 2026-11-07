@@ -80,7 +80,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Antrenman ekranında set eklenen gün (geçmişe set girmek için). */
     private val _workoutDay = MutableStateFlow(LocalDate.now().toEpochDay())
     val workoutDay: StateFlow<Long> = _workoutDay
-    fun shiftWorkoutDay(delta: Int) { _workoutDay.value = (_workoutDay.value + delta).coerceIn(today - 30, today) }
+    fun shiftWorkoutDay(delta: Int) { holdWorkoutDay = false; _workoutDay.value = (_workoutDay.value + delta).coerceIn(today - 30, today) }
+
+    private var lastSetAt = 0L
+    private var holdWorkoutDay = false
+    private fun workoutInProgress(): Boolean {
+        val now = System.currentTimeMillis()
+        val session = settings.value.sessionStart
+        return (lastSetAt > 0 && now - lastSetAt < 3 * 3600_000L) || (session > 0 && now - session < 5 * 3600_000L)
+    }
 
     /** Hareket detay ekranında gösterilen hareket. */
     val detailExercise = MutableStateFlow("")
@@ -137,7 +145,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             dayTicker.collect { d ->
                 if (d != last) {
                     if (_day.value == last) _day.value = d
-                    if (_workoutDay.value == last) _workoutDay.value = d
+                    // Gece yarısını geçen antrenman bölünmesin: son 3 saatte set girildiyse ya da seans açıksa günü tut.
+                    if (_workoutDay.value == last) {
+                        if (workoutInProgress()) holdWorkoutDay = true else _workoutDay.value = d
+                    }
                     last = d
                 }
             }
@@ -303,6 +314,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         restOverride: Int? = null, isDrop: Boolean = false
     ) = viewModelScope.launch {
         val name = normalizeExercise(exercise)
+        // Gece yarısından sonra tutulan gün: antrenman bittiyse (3 saat ara) yeni güne geç.
+        if (holdWorkoutDay && !workoutInProgress()) { holdWorkoutDay = false; _workoutDay.value = today }
+        lastSetAt = System.currentTimeMillis()
         val day = _workoutDay.value
         val bw = profile.value.profile?.weightKg ?: 0.0
         val previous = sets.value.filter { it.counted() && it.exercise.trim().equals(name, true) }
@@ -527,6 +541,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         viewModelScope.launch {
             dao.saveProfile(profile)
+            weights.value.filter { it.epochDay == today }.forEach { dao.deleteWeight(it) }
             dao.addWeight(BodyWeight(epochDay = today, kg = profile.weightKg))
         }
         store.update {
@@ -559,6 +574,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Vücut ----------
 
     fun addWeight(kg: Double) = viewModelScope.launch {
+        weights.value.filter { it.epochDay == today }.forEach { dao.deleteWeight(it) }   // günde tek tartı
         dao.addWeight(BodyWeight(epochDay = today, kg = kg))
         profile.value.profile?.let { dao.saveProfile(it.copy(weightKg = kg)) }
     }
@@ -606,7 +622,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun exportTo(uri: Uri) = viewModelScope.launch {
         try {
-            write(uri, Backup.export(db))
+            write(uri, Backup.export(db, getApplication()))
             _msgText = "Yedek kaydedildi."
         } catch (e: Exception) {
             _msgText = "Yedek kaydedilemedi: ${e.message}"
@@ -642,8 +658,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val json = withContext(Dispatchers.IO) {
                 getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
             } ?: error("Dosya okunamadı.")
-            Backup.import(db, json)
-            store.update { it.copy(seenInit = false) }
+            Backup.import(db, json, getApplication())
+            store.reload()
+            store.update { it.copy(seenInit = false, onboarded = true) }
             _msgText = "Yedek geri yüklendi."
         } catch (e: Exception) {
             _msgText = "Geri yüklenemedi: ${e.message}"

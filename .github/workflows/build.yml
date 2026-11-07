@@ -32,19 +32,19 @@ jobs:
           FITTAKIP_KEYSTORE_PASSWORD: ${{ secrets.FITTAKIP_KEYSTORE_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleRelease --stacktrace
 
       - name: İmzayı göster
         run: |
           if [ -n "$FITTAKIP_KEYSTORE" ]; then echo "Sabit anahtar: VAR"; else echo "Sabit anahtar: YOK (secret eklenmemiş)"; fi
           AS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)apksigner
-          $AS verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -i "SHA-1"
+          $AS verify --print-certs app/build/outputs/apk/release/app-release.apk | grep -i "SHA-1"
 
       - name: APK'yı yükle
         uses: actions/upload-artifact@v4
         with:
           name: FitTakip-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/release/app-release.apk
 
       - name: Testleri çalıştır
         env:

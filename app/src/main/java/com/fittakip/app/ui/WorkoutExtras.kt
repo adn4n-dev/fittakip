@@ -203,6 +203,7 @@ fun LibrarySheet(
                     Row(Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(e.name, style = MaterialTheme.typography.titleSmall, color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                            com.fittakip.app.data.exerciseTr(e.name)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = FitColors.Lime.copy(alpha = 0.85f)) }
                             HintText("${e.equipment.emoji} ${e.equipment.label} · ${e.muscle}")
                             if (!editGym) FORM_TIPS[e.name]?.let { HintText("💡 $it") }
                         }

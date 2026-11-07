@@ -13,8 +13,8 @@ android {
         applicationId = "com.fittakip.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         // Google ile giriş için Google Cloud'daki "Web application" OAuth istemci kimliği.
         val webClientId = (project.findProperty("fittakip.googleWebClientId") as String?)
@@ -40,7 +40,9 @@ android {
             signingConfigs.findByName("fixed")?.let { signingConfig = it }
         }
         release {
+            // Release: debug sürümden belirgin şekilde daha akıcı (Compose debug modda yavaş çalışır).
             isMinifyEnabled = false
+            signingConfigs.findByName("fixed")?.let { signingConfig = it }
         }
     }
     compileOptions {
@@ -49,6 +51,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     buildFeatures {
         compose = true

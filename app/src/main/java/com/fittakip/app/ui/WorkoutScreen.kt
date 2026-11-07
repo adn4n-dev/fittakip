@@ -68,15 +68,6 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     var newTemplate by rememberSaveable { mutableStateOf(false) }
     var library by rememberSaveable { mutableStateOf(false) }
 
-    fun pick(name: String) {
-        exercise = name
-        // Son yapılan değerlerle otomatik doldur
-        sets.firstOrNull { it.exercise.trim().equals(name, true) }?.let {
-            kg = it.weightKg.clean()
-            reps = it.reps.toString()
-        }
-    }
-
     val allTemplates = settings.allTemplates
     val dayPlan = remember(settings, sets, wDay) { com.fittakip.app.domain.PlanResolver.forDay(settings, sets, wDay) }
     val planned = (dayPlan as? com.fittakip.app.domain.DayPlan.Workout)?.template
@@ -90,6 +81,30 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
         return (items.drop(i + 1) + items.take(i.coerceAtLeast(0))).firstOrNull { doneSets(it.exercise) < it.sets && it.exercise != after }?.exercise
     }
     val lastToday = sets.firstOrNull { it.epochDay == wDay && it.exercise.trim().equals(exercise.trim(), true) }
+
+    /** Bu hareketin, aynı antrenmanın (ör. Upper B) günlerindeki geçmişi. */
+    fun contextPast(name: String) = com.fittakip.app.domain.Coach.contextHistory(sets, name, template?.name, allTemplates, wDay)
+
+    fun pick(name: String) {
+        exercise = name
+        // Bugün bu harekette set girdiysen onun devamı; yoksa koçun önerdiği ağırlık/tekrar (ısınma ve drop hariç).
+        val todayLast = sets.firstOrNull { it.epochDay == wDay && it.counted() && it.exercise.trim().equals(name, true) }
+        val item = template?.items?.firstOrNull { it.exercise.equals(name, true) }
+        val target = if (todayLast != null) com.fittakip.app.domain.Coach.Target(todayLast.weightKg, todayLast.reps)
+        else com.fittakip.app.domain.Coach.nextTarget(contextPast(name), item)
+            ?: sets.firstOrNull { it.counted() && it.exercise.trim().equals(name, true) }?.let { com.fittakip.app.domain.Coach.Target(it.weightKg, it.reps) }
+        target?.let {
+            kg = it.kg.clean()
+            reps = it.reps.toString()
+        }
+    }
+
+    // Antrenman ekranı açıkken ekran kararmasın (setler arası kilit açmak zorunda kalma).
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -160,6 +175,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(ex, style = MaterialTheme.typography.titleSmall)
+                                        com.fittakip.app.data.exerciseTr(ex)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = FitColors.Lime.copy(alpha = 0.85f)) }
                                         HintText(
                                             "${muscleOf(ex)} · hedef ${item.label}" +
                                                 (if (item.note.isNotBlank()) " · ${item.note}" else "")
@@ -203,18 +219,20 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                 }
                 val planItem = template?.items?.firstOrNull { it.exercise.equals(q, true) }
                 if (q.isNotEmpty()) {
+                    val ctxDay = contextPast(q).maxOfOrNull { it.epochDay }
                     val prev = sets.filter { it.exercise.trim().equals(q, true) && it.epochDay < wDay && !it.warmup }
-                    prev.maxOfOrNull { it.epochDay }?.let { lastDay ->
+                    (ctxDay ?: prev.maxOfOrNull { it.epochDay })?.let { lastDay ->
                         val ls = prev.filter { it.epochDay == lastDay }.reversed()
                         Text(
                             "Geçen sefer (${dayLabel(lastDay)}): " + ls.joinToString(", ") { (if (it.isDrop) "↓" else "") + "${it.weightKg.clean()}×${it.reps}" },
                             style = MaterialTheme.typography.bodyMedium, color = FitColors.Blue
                         )
                     }
+                    com.fittakip.app.data.exerciseTr(q)?.let { HintText("ℹ️ $q: $it") }
                     MachineNoteRow(q, settings.machineNote(q)) { vm.setMachineNote(q, it) }
                 }
                 if (q.isNotEmpty()) {
-                    (if (planItem != null) Calculator.rangeSuggestion(sets, planItem, wDay) else Calculator.suggestion(sets, q, vm.today))?.let { tip ->
+                    (if (planItem != null) Calculator.rangeSuggestionFrom(contextPast(q), planItem) else Calculator.suggestion(sets, q, vm.today))?.let { tip ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconBadge(Icons.Rounded.Lightbulb, FitColors.Orange, 30.dp)
                             Spacer(Modifier.width(10.dp))
