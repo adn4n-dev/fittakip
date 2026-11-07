@@ -535,6 +535,7 @@ private fun AccountCard(vm: AppViewModel, settings: com.fittakip.app.data.AppSet
             if (settings.anthropicKey.isBlank()) TextButton(onClick = { keyDialog = true }) { Text("Ekle") }
             else TextButton(onClick = { vm.updateSettings { it.copy(anthropicKey = "") } }) { Text("Sil", color = MaterialTheme.colorScheme.error) }
         }
+        LocalAiCard()
         if (keyDialog) ApiKeyDialog(onDismiss = { keyDialog = false }) { k -> vm.updateSettings { it.copy(anthropicKey = k.trim()) }; keyDialog = false }
         TextButton(onClick = { confirmRedo = true }) { Text("Kurulum sihirbazını yeniden başlat") }
     }

@@ -49,7 +49,8 @@ data class AppSettings(
     val fastingMode: Boolean = false,                // oruç modu: öğünler sahur / iftar
     val driveBackupOn: Boolean = false,              // Google Drive'a günlük otomatik yedek
     val lastDriveBackup: Long = 0L,
-    val anthropicKey: String = ""                    // fotoğraftan kalori için kullanıcının kendi Claude API anahtarı (yedeğe girmez)
+    val anthropicKey: String = "",                   // fotoğraftan kalori için kullanıcının kendi Claude API anahtarı (yedeğe girmez)
+    val modelDownloadId: Long = 0L                   // telefondaki yapay zekâ modelinin süren indirmesi
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -181,7 +182,8 @@ class SettingsStore(context: Context) {
         fastingMode = prefs.getBoolean("fastingMode", false),
         driveBackupOn = prefs.getBoolean("driveBackupOn", false),
         lastDriveBackup = prefs.getLong("lastDriveBackup", 0L),
-        anthropicKey = prefs.getString("anthropicKey", "") ?: ""
+        anthropicKey = prefs.getString("anthropicKey", "") ?: "",
+        modelDownloadId = prefs.getLong("modelDownloadId", 0L)
     )
 
     @Synchronized
@@ -233,6 +235,7 @@ class SettingsStore(context: Context) {
             .putBoolean("driveBackupOn", s.driveBackupOn)
             .putLong("lastDriveBackup", s.lastDriveBackup)
             .putString("anthropicKey", s.anthropicKey)
+            .putLong("modelDownloadId", s.modelDownloadId)
             .apply()
         _state.value = s
     }

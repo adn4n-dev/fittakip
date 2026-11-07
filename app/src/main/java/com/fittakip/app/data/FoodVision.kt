@@ -28,7 +28,7 @@ object FoodVision {
     data class Result(val items: List<Guess>, val note: String)
     class VisionException(message: String) : Exception(message)
 
-    private val PROMPT = """
+    val PROMPT = """
         Bu fotoğraftaki yiyecek ve içecekleri tanı ve her biri için fotoğraftaki porsiyonu gözle tahmin et.
         Türk mutfağını iyi bil (pilav, kuru fasulye, mercimek çorbası, lahmacun, simit, ayran vb.).
         Yağ ve sos gibi görünmeyen kalorileri makul ölçüde hesaba kat.
@@ -37,6 +37,18 @@ object FoodVision {
          "note":"Türkçe tek cümle: emin olmadığın şeyler ya da porsiyonu netleştirmek için ipucu"}
         kcal tam sayı; protein, carb, fat gram. Fotoğrafta yiyecek yoksa items boş dizi olsun ve note'ta bunu söyle.
     """.trimIndent()
+
+    /** Telefondaki model hazırsa onu (internetsiz), değilse Claude'u kullanır. */
+    suspend fun analyzeAuto(context: Context, uri: Uri, apiKey: String): Result =
+        if (LocalVision.isReady(context)) analyzeLocal(context, uri) else analyze(context, uri, apiKey)
+
+    suspend fun analyzeLocal(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
+        val jpeg = loadScaled(context, uri, 768) ?: throw VisionException("Fotoğraf açılamadı.")
+        val text = try { LocalVision.analyze(context, jpeg, PROMPT) } catch (e: Throwable) {
+            throw VisionException("Telefondaki yapay zekâ çalışamadı: ${e.message ?: e.javaClass.simpleName}")
+        }
+        parse(text)
+    }
 
     suspend fun analyze(context: Context, uri: Uri, apiKey: String): Result = withContext(Dispatchers.IO) {
         val jpeg = loadScaled(context, uri) ?: throw VisionException("Fotoğraf açılamadı.")
@@ -95,19 +107,19 @@ object FoodVision {
     }
 
     /** En uzun kenarı 1024 px, JPEG %80; telefon yan çektiyse düzeltir. */
-    private fun loadScaled(context: Context, uri: Uri): ByteArray? {
+    private fun loadScaled(context: Context, uri: Uri, maxSide: Int = 1024): ByteArray? {
         val cr = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0) return null
         var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1024) sample *= 2
+        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
         var bmp = cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) } ?: return null
         val rotation = runCatching {
             cr.openInputStream(uri)?.use { androidx.exifinterface.media.ExifInterface(it).rotationDegrees } ?: 0
         }.getOrDefault(0)
         if (rotation != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation.toFloat()) }, true)
-        val scale = 1024f / max(bmp.width, bmp.height)
+        val scale = maxSide.toFloat() / max(bmp.width, bmp.height)
         if (scale < 1f) bmp = Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
         return ByteArrayOutputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 80, it); it.toByteArray() }
     }
