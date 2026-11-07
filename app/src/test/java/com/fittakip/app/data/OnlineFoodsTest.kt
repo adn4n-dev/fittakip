@@ -35,4 +35,14 @@ class OnlineFoodsTest {
         assertNull(OnlineFoods.parse(JSONObject("""{"product_name":"","nutriments":{"energy-kcal_100g":100}}""")))
         assertNull(OnlineFoods.parse(JSONObject("""{"product_name":"X","nutriments":{}}""")))
     }
+
+    @Test
+    fun duplicateProducts_doNotProduceDuplicateRows() {
+        // Çökme raporundaki durum: aynı ürün veritabanında iki kez
+        val one = """{"product_name":"President Kaşar Peyniri","brands":"Président","nutriments":{"energy-kcal_100g":346}}"""
+        val m = OnlineFoods::class.java.getDeclaredMethod("parseList", String::class.java).apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val list = m.invoke(OnlineFoods, """{"products":[$one,$one]}""") as List<FoodItem>
+        assertEquals(1, list.size)
+    }
 }

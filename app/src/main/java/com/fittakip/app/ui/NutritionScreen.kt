@@ -3,6 +3,7 @@ package com.fittakip.app.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
@@ -596,7 +597,7 @@ private fun AddFoodSheet(
                         onlineState == "done" && online.isEmpty() -> item { HintText("İnternette de bulunamadı. Barkodu okutmayı ya da \"Elle gir\"i dene.") }
                         onlineState != "" && onlineState != "loading" && onlineState != "done" -> item { HintText(onlineState) }
                     }
-                    items(online, key = { "o-" + it.name + it.kcal }) { item ->
+                    itemsIndexed(online, key = { i, it -> "o-$i-${it.name}" }) { _, item ->
                         PickRow(item.name, item.portion, item.kcal, item.name in favorites, { onToggleFavorite(item.name) }) { picked = item; mult = 1.0 }
                     }
                     if (online.isNotEmpty()) item { HintText("Değerler üreticilerin etiketinden, Open Food Facts gönüllülerince girildi; nadiren hatalı olabilir.") }

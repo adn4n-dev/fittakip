@@ -28,7 +28,7 @@ object OnlineFoods {
         val enc = URLEncoder.encode(q, "UTF-8")
         fun url(host: String) = "https://$host/cgi/search.pl?search_terms=$enc&search_simple=1&action=process&json=1&page_size=40&fields=$FIELDS"
         val tr = parseList(get(url("tr.openfoodfacts.org")))
-        val all = if (tr.size >= 8) tr else (tr + parseList(get(url("world.openfoodfacts.org")))).distinctBy { it.name.lowercase() }
+        val all = if (tr.size >= 8) tr else (tr + parseList(get(url("world.openfoodfacts.org")))).distinctBy { it.name.lowercase() to it.kcal }
         synchronized(cache) { cache[q] = all }
         all
     }
@@ -42,7 +42,8 @@ object OnlineFoods {
 
     private fun parseList(body: String): List<FoodItem> {
         val arr = JSONObject(body).optJSONArray("products") ?: return emptyList()
-        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it)) }
+        // Veritabanında aynı ürün birden çok kez kayıtlı olabiliyor: ad + kaloriye göre tekilleştir
+        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it)) }.distinctBy { it.name.lowercase() to it.kcal }
     }
 
     /** Porsiyon bilgisi varsa porsiyon başına, yoksa 100 g başına değerler. */
