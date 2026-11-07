@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -174,6 +175,34 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
 
     celebrations.firstOrNull()?.let { c ->
         CelebrationDialog(c) { vm.dismissCelebration() }
+    }
+
+    // Son kullanımda çöktüyse: rapor telefonda, paylaşmak kullanıcının kararı.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var crash by remember { mutableStateOf(CrashLog.read(ctx)) }
+    crash?.let { report ->
+        AlertDialog(
+            onDismissRequest = { CrashLog.clear(ctx); crash = null },
+            title = { Text("Uygulama son kullanımda çöktü 😕") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Özür dilerim. Hatanın kaydı sadece bu telefonda duruyor, hiçbir yere gönderilmedi.")
+                    Text("Paylaşırsan (WhatsApp, e-posta…) sorunu bulup düzeltmek çok kolaylaşır. Raporda kayıtların yok; sadece hatanın teknik detayı ve telefon modeli var.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "FitTakip çökme raporu")
+                        putExtra(android.content.Intent.EXTRA_TEXT, report)
+                    }
+                    ctx.startActivity(android.content.Intent.createChooser(send, "Raporu paylaş"))
+                    CrashLog.clear(ctx); crash = null
+                }) { Text("Raporu paylaş") }
+            },
+            dismissButton = { TextButton(onClick = { CrashLog.clear(ctx); crash = null }) { Text("Sil") } }
+        )
     }
 }
 

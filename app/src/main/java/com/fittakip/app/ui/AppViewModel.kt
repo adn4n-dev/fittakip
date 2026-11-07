@@ -37,7 +37,7 @@ sealed class Celebration {
     data class PR(val exercise: String, val newBest: Double, val oldBest: Double) : Celebration()
     data class Badge(val achievement: Achievement) : Celebration()
     data class LevelUp(val level: Int, val title: String) : Celebration()
-    data class Custom(val emoji: String, val title: String, val body: String) : Celebration()
+    data class Custom(val emoji: String, val title: String, val body: String, val shareText: String? = null) : Celebration()
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -362,7 +362,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.addSession(WorkoutSession(epochDay = today, start = start, end = end))
         val todaySets = sets.value.filter { it.epochDay == today && it.counted() }
         val vol = todaySets.sumOf { it.weightKg * it.reps }.roundToInt()
-        celebrate(Celebration.Custom("🏁", "Antrenman bitti!", "$min dakika · ${todaySets.size} set · $vol kg hacim"))
+        celebrate(Celebration.Custom("🏁", "Antrenman bitti!", "$min dakika · ${todaySets.size} set · $vol kg hacim",
+            workoutShareText(today) + "\n\n⏱️ $min dk · ${todaySets.size} set · $vol kg hacim"))
     }
 
     fun cancelSession() = store.update { it.copy(sessionStart = 0) }
@@ -716,11 +717,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun resetAll() = viewModelScope.launch {
+    fun resetAll(driveToken: String? = null) = viewModelScope.launch {
+        var driveNote = ""
+        if (driveToken != null) {
+            driveNote = try {
+                val n = com.fittakip.app.auth.DriveSync.deleteAll(driveToken)
+                " Drive'daki $n yedek de silindi."
+            } catch (e: Exception) { " Drive'daki yedekler silinemedi: ${e.message}" }
+        }
+        com.fittakip.app.notify.DriveBackup.schedule(getApplication(), false)
         photos.value.forEach { withContext(Dispatchers.IO) { File(it.path).delete() } }
         Backup.clearAll(dao)
         store.update { AppSettings(onboarded = true) }
-        _msgText = "Tüm veriler silindi."
+        _msgText = "Tüm veriler silindi.$driveNote"
     }
 
     // ---------- Paylaşım ----------

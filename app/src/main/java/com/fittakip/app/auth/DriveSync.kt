@@ -84,6 +84,13 @@ object DriveSync {
         }
     }
 
+    /** Drive'daki tüm FitTakip yedeklerini siler; silinen dosya sayısını döner. */
+    suspend fun deleteAll(token: String): Int = withContext(Dispatchers.IO) {
+        val all = list(token)
+        all.forEach { http("DELETE", "https://www.googleapis.com/drive/v3/files/${it.id}", token) }
+        all.size
+    }
+
     private fun http(method: String, url: String, token: String, body: String? = null, type: String? = null): String {
         val c = URL(url).openConnection() as HttpURLConnection
         try {

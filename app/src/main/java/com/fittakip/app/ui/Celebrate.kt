@@ -80,6 +80,13 @@ fun CelebrationDialog(c: Celebration, onDismiss: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     PrimaryButton("Harika!", onClick = onDismiss)
+                    (c as? Celebration.Custom)?.shareText?.let { text ->
+                        val ctx = androidx.compose.ui.platform.LocalContext.current
+                        TextButton(onClick = {
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, text) }
+                            ctx.startActivity(android.content.Intent.createChooser(send, "Antrenmanını paylaş"))
+                        }) { Text("📤 Antrenmanını paylaş") }
+                    }
                 }
             }
         }

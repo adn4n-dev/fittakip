@@ -28,6 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fittakip.app.data.CARDIO_TYPES
@@ -256,6 +260,16 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         )
                     }
                     com.fittakip.app.data.exerciseTr(q)?.let { HintText("ℹ️ $q: $it") }
+                    val bwKg = state.profile?.weightKg ?: 0.0
+                    val plateau = remember(q, sets, template?.name) {
+                        val past = contextPast(q)
+                        if (past.map { it.epochDay }.distinct().size < 4) null
+                        else com.fittakip.app.domain.ProgressAnalyzer.analyzeExercise(past, bwKg).takeIf {
+                            it.verdict == com.fittakip.app.domain.Verdict.PLATEAU && it.history.size >= 4 &&
+                                it.history.last().first - it.history.first().first >= 21
+                        }
+                    }
+                    plateau?.let { PlateauCoach(q, kg.toNum(), onLight = { light -> kg = light.clean() }) }
                     MachineNoteRow(q, settings.machineNote(q)) { vm.setMachineNote(q, it) }
                 }
                 if (q.isNotEmpty()) {
@@ -708,7 +722,8 @@ private fun FocusMode(
                 if (resting) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("DİNLEN", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 3.sp)
-                        Text("%d:%02d".format(left / 60, left % 60), fontSize = 88.sp, fontWeight = FontWeight.Black, color = FitColors.Lime)
+                        Text("%d:%02d".format(left / 60, left % 60), fontSize = 88.sp, fontWeight = FontWeight.Black, color = FitColors.Lime,
+                            modifier = Modifier.semantics { contentDescription = "Dinlenme, $left saniye kaldı" })
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             SecondaryButton("+30 sn", onClick = { vm.addRest(30) })
                             SecondaryButton("Atla", onClick = { vm.stopRest() })
@@ -740,15 +755,38 @@ private fun FocusMode(
 @Composable
 private fun BigAdjust(unit: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        FilledTonalButton(onClick = onMinus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp), contentPadding = PaddingValues(0.dp)) {
+        FilledTonalButton(onClick = onMinus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp).semantics { contentDescription = "$unit azalt" }, contentPadding = PaddingValues(0.dp)) {
             Text("−", fontSize = 40.sp, fontWeight = FontWeight.Bold)
         }
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }, horizontalAlignment = Alignment.CenterHorizontally) {
             Text(value.ifBlank { "0" }, fontSize = 64.sp, fontWeight = FontWeight.Black)
             Text(unit, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        FilledTonalButton(onClick = onPlus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp), contentPadding = PaddingValues(0.dp)) {
+        FilledTonalButton(onClick = onPlus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp).semantics { contentDescription = "$unit artır" }, contentPadding = PaddingValues(0.dp)) {
             Text("+", fontSize = 40.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+
+/** Plato görülünce somut öneri (ağırlığı kendisi değiştirmez; kullanıcı isterse uygular). */
+@Composable
+private fun PlateauCoach(exercise: String, currentKg: Double?, onLight: (Double) -> Unit) {
+    val step = com.fittakip.app.data.weightStep(exercise)
+    val light = currentKg?.let { (Math.round(it * 0.9 / step) * step).coerceAtLeast(0.0) }
+    Surface(
+        shape = RoundedCornerShape(18.dp), color = FitColors.Orange.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, FitColors.Orange.copy(alpha = 0.4f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("🧭 3+ haftadır yerinde sayıyorsun", style = MaterialTheme.typography.titleSmall, color = FitColors.Orange)
+            Text("Koçun önerisi:", style = MaterialTheme.typography.bodyMedium)
+            Text("1. Bu hafta hafif hafta yap: ağırlığı %10 azalt" + (light?.let { " (${it.clean()} kg)" } ?: "") + ", her seti temiz ve tam tekrarla bitir.", style = MaterialTheme.typography.bodySmall)
+            Text("2. Sonraki hafta tekrar aralığını değiştir (ör. 8–12 yerine 6–8 daha ağır) ya da tutuşu/makineyi değiştir.", style = MaterialTheme.typography.bodySmall)
+            Text("3. Uyku ve proteini kontrol et; plato çoğu zaman toparlanma eksikliğidir.", style = MaterialTheme.typography.bodySmall)
+            HintText("Ağrı ya da eklem rahatsızlığı varsa zorlama, ağırlığı düşür.")
+            if (light != null && light > 0) TextButton(onClick = { onLight(light) }) { Text("Bugün hafif hafta: ${light.clean()} kg yaz") }
         }
     }
 }

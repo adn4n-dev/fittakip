@@ -298,7 +298,7 @@ fun Stepper(value: String, onChange: (String) -> Unit, label: String, step: Doub
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { onChange(max(0.0, (value.toNum() ?: 0.0) - step).clean()) }) {
-                Icon(Icons.Rounded.Remove, contentDescription = "Azalt")
+                Icon(Icons.Rounded.Remove, contentDescription = "$label azalt")
             }
             BasicTextField(
                 value = value,
@@ -313,7 +313,7 @@ fun Stepper(value: String, onChange: (String) -> Unit, label: String, step: Doub
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = { onChange(((value.toNum() ?: 0.0) + step).clean()) }) {
-                Icon(Icons.Rounded.Add, contentDescription = "Artır")
+                Icon(Icons.Rounded.Add, contentDescription = "$label artır")
             }
         }
     }

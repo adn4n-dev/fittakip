@@ -408,15 +408,31 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 }
             }
         }
-        item { HintText("FitTakip 3.0 · Tüm veriler sadece bu telefonda saklanır. Ana ekrana FitTakip widget'ını ekleyebilir, uygulama ikonuna basılı tutarak kısayolları kullanabilirsin.") }
+        item { HintText("FitTakip ${com.fittakip.app.BuildConfig.VERSION_NAME} · Verilerin bu telefonda saklanır; Drive yedeğini açarsan sadece senin Google Drive'ına gider. Ana ekrana FitTakip widget'ını ekleyebilir, uygulama ikonuna basılı tutarak kısayolları kullanabilirsin.") }
     }
 
+    var wipeDrive by remember { mutableStateOf(false) }
+    val withDriveReset = rememberDriveAuth { vm.resetAll(); vm.toast("Drive'a ulaşılamadı, sadece telefondaki veriler silindi: $it") }
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Her şey silinsin mi?") },
-            text = { Text("Profil, yemekler, setler, tartılar, su, kardiyo ve ölçülerin kalıcı olarak silinir. Önce yedek almanı öneririm.") },
-            confirmButton = { TextButton(onClick = { vm.resetAll(); confirmReset = false }) { Text("Sil", color = MaterialTheme.colorScheme.error) } },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Profil, yemekler, setler, tartılar, su, kardiyo, ölçüler, fotoğraflar ve programın kalıcı olarak silinir.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = wipeDrive, onCheckedChange = { wipeDrive = it })
+                        Column {
+                            Text("Google Drive'daki yedekleri de sil", style = MaterialTheme.typography.titleSmall)
+                            HintText("İşaretlemezsen Drive'daki yedeklerin durur, sonra geri yükleyebilirsin.")
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                confirmReset = false
+                if (wipeDrive) withDriveReset { vm.resetAll(it) } else vm.resetAll()
+            }) { Text("Sil", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Vazgeç") } },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
