@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.QrCodeScanner
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -136,7 +138,7 @@ fun NutritionScreen(vm: AppViewModel) {
                 EmptyState(
                     Icons.Rounded.Restaurant,
                     if (day == vm.today) "Bugün henüz bir şey eklemedin" else "Bu gün için kayıt yok",
-                    "170'ten fazla hazır yemek içinden ara ya da kendi değerlerini gir."
+                    "170+ ev yemeği ve internette milyonlarca market ürünü içinden ara, barkod okut ya da kendi değerlerini gir."
                 )
             }
         }
@@ -430,6 +432,45 @@ private fun AddFoodSheet(
         if (q.isEmpty()) FOOD_DB.take(20) else all.filter { it.name.trLower().contains(q) }
     }
 
+    // İnternetten arama (Open Food Facts): yazmayı bırakınca 0,8 sn sonra
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var online by remember { mutableStateOf<List<FoodItem>>(emptyList()) }
+    var onlineState by remember { mutableStateOf("") }   // "", "loading", "done", hata mesajı
+    LaunchedEffect(query) {
+        val q = query.trim()
+        online = emptyList()
+        if (q.length < 3) { onlineState = ""; return@LaunchedEffect }
+        kotlinx.coroutines.delay(800)
+        onlineState = "loading"
+        onlineState = try {
+            online = com.fittakip.app.data.OnlineFoods.search(q).filter { o -> results.none { it.name.equals(o.name, true) } }
+            "done"
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            (e as? com.fittakip.app.data.OnlineFoods.OnlineException)?.message ?: "İnternet yok; sadece telefondaki liste aranıyor."
+        }
+    }
+    fun scanBarcode() {
+        val opts = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(
+                com.google.mlkit.vision.barcode.common.Barcode.FORMAT_EAN_13, com.google.mlkit.vision.barcode.common.Barcode.FORMAT_EAN_8,
+                com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_A, com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_E
+            ).build()
+        com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, opts).startScan()
+            .addOnSuccessListener { b ->
+                val code = b.rawValue ?: return@addOnSuccessListener
+                onlineState = "loading"
+                scope.launch {
+                    onlineState = try {
+                        val item = com.fittakip.app.data.OnlineFoods.byBarcode(code)
+                        if (item != null) { picked = item; mult = 1.0; "" } else "Barkod ($code) veritabanında yok. \"Elle gir\" ile ekleyebilirsin."
+                    } catch (e: Exception) { "Barkod aranamadı: ${e.message}" }
+                }
+            }
+            .addOnFailureListener { onlineState = "Barkod okuyucu açılamadı: ${it.message}" }
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         LazyColumn(
             Modifier.fillMaxHeight(0.92f),
@@ -491,8 +532,9 @@ private fun AddFoodSheet(
                 item {
                     OutlinedTextField(
                         value = query, onValueChange = { query = it },
-                        placeholder = { Text("Ara: tavuk, simit, mercimek…") },
+                        placeholder = { Text("Ara: tavuk, simit, Ülker, Pınar…") },
                         leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                        trailingIcon = { IconButton(onClick = { scanBarcode() }) { Icon(Icons.Rounded.QrCodeScanner, "Barkod okut") } },
                         singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -539,6 +581,22 @@ private fun AddFoodSheet(
                 }
                 items(results, key = { "d-" + it.name }) { item ->
                     PickRow(item.name, item.portion, item.kcal, item.name in favorites, { onToggleFavorite(item.name) }) { picked = item; mult = 1.0 }
+                }
+                if (query.trim().length >= 3 || onlineState.isNotEmpty()) {
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                            Text("🌐 Market ürünleri (Open Food Facts)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            if (onlineState == "loading") CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                    when {
+                        onlineState == "done" && online.isEmpty() -> item { HintText("İnternette de bulunamadı. Barkodu okutmayı ya da \"Elle gir\"i dene.") }
+                        onlineState != "" && onlineState != "loading" && onlineState != "done" -> item { HintText(onlineState) }
+                    }
+                    items(online, key = { "o-" + it.name + it.kcal }) { item ->
+                        PickRow(item.name, item.portion, item.kcal, item.name in favorites, { onToggleFavorite(item.name) }) { picked = item; mult = 1.0 }
+                    }
+                    if (online.isNotEmpty()) item { HintText("Değerler üreticilerin etiketinden, Open Food Facts gönüllülerince girildi; nadiren hatalı olabilir.") }
                 }
             }
         }
