@@ -27,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fittakip.app.data.CARDIO_TYPES
 import com.fittakip.app.data.CardioEntry
@@ -99,6 +101,26 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
         }
     }
 
+    var focus by rememberSaveable { mutableStateOf(false) }
+
+    /** Spor modu: hedefi tek dokunuşla kaydet, süperset partnerine ya da sıradaki harekete geç. */
+    fun logAndAdvance(w: Double, r: Int) {
+        val name = exercise.trim()
+        val cur = template?.items?.firstOrNull { it.exercise.equals(name, true) }
+        val group = if (cur != null && cur.superset > 0) template.items.filter { it.superset == cur.superset } else emptyList()
+        val isFirst = group.size == 2 && group[0].exercise.equals(cur?.exercise, true)
+        vm.addSet(name, w, r, "", false, null, if (isFirst) 15 else null)
+        if (group.size == 2) {
+            val partner = if (isFirst) group[1] else group[0]
+            if (doneSets(partner.exercise) < partner.sets) { pick(partner.exercise); return }
+        }
+        if (cur != null && doneSets(cur.exercise) + 1 >= cur.sets) {
+            val nx = nextPlanExercise(cur.exercise)
+            if (nx != null) { pick(nx); vm.toast("${cur.exercise} tamam ✅ Sıradaki: $nx") }
+            else vm.toast("${template.name} bitti 🎉 Eline sağlık!")
+        }
+    }
+
     // Antrenman ekranı açıkken ekran kararmasın (setler arası kilit açmak zorunda kalma).
     val view = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(view) {
@@ -157,6 +179,11 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
                         Pill("$done / ${template.exercises.size}", if (done == template.exercises.size) FitColors.Lime else FitColors.Orange)
                     }
                     ProgressBar(done.toFloat() / template.exercises.size, FitColors.Lime)
+                    if (wDay == vm.today && done < template.exercises.size) PrimaryButton("🎯 Spor modu · tek dokunuşla set", onClick = {
+                        if (template.items.none { it.exercise.equals(exercise.trim(), true) && doneSets(it.exercise) < it.sets })
+                            template.items.firstOrNull { doneSets(it.exercise) < it.sets }?.let { pick(it.exercise) }
+                        focus = true
+                    }, modifier = Modifier.fillMaxWidth())
                     if (settings.templates.any { it.name == template.name }) {
                         TextButton(onClick = { vm.deleteTemplate(template.name) }) { Text("Bu programı sil", color = MaterialTheme.colorScheme.error) }
                     }
@@ -395,6 +422,27 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
         pick(it)
         library = false
     }
+
+    if (focus && template != null) {
+        val item = template.items.firstOrNull { it.exercise.equals(exercise.trim(), true) }
+        val past = contextPast(exercise.trim())
+        val lastDay = past.maxOfOrNull { it.epochDay }
+        FocusMode(
+            exercise = exercise.trim(),
+            item = item,
+            setNo = doneSets(exercise.trim()) + 1,
+            done = template.items.count { doneSets(it.exercise) >= it.sets },
+            total = template.items.size,
+            lastTime = lastDay?.let { d -> past.filter { it.epochDay == d }.joinToString("  ") { "${it.weightKg.clean()}×${it.reps}" } },
+            kg = kg, reps = reps,
+            onKg = { kg = it }, onReps = { reps = it },
+            restEnd = restEnd, vm = vm,
+            nextName = item?.let { nextPlanExercise(it.exercise) },
+            onSkip = { item?.let { nextPlanExercise(it.exercise) }?.let { pick(it) } },
+            onLog = { kg.toNum()?.let { w -> reps.toNum()?.toInt()?.let { r -> if (r > 0) logAndAdvance(w, r) } } },
+            onClose = { focus = false }
+        )
+    }
 }
 
 @Composable
@@ -612,6 +660,95 @@ private fun MachineNoteRow(exercise: String, note: String, onSave: (String) -> U
                 modifier = Modifier.weight(1f)
             )
             Text("Düzenle", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+
+/** Tam ekran, sade antrenman: kocaman hedef, tek dokunuşla "Set tamam", büyük dinlenme sayacı. */
+@Composable
+private fun FocusMode(
+    exercise: String, item: com.fittakip.app.data.PlanItem?, setNo: Int, done: Int, total: Int, lastTime: String?,
+    kg: String, reps: String, onKg: (String) -> Unit, onReps: (String) -> Unit,
+    restEnd: Long?, vm: AppViewModel, nextName: String?,
+    onSkip: () -> Unit, onLog: () -> Unit, onClose: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        val view = androidx.compose.ui.platform.LocalView.current
+        DisposableEffect(view) { view.keepScreenOn = true; onDispose { } }
+        val step = com.fittakip.app.data.weightStep(exercise)
+        var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+        LaunchedEffect(restEnd) {
+            while (restEnd != null && System.currentTimeMillis() < restEnd) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(250) }
+            now = System.currentTimeMillis()
+        }
+        val left = restEnd?.let { ((it - now) / 1000).coerceAtLeast(0) } ?: 0
+        val resting = restEnd != null && left > 0
+        Surface(color = Color(0xFF07090C), modifier = Modifier.fillMaxSize()) {
+            Column(
+                Modifier.fillMaxSize().systemBarsPadding().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Hareket ${done + 1}/$total", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClose) { Text("Kapat") }
+                }
+                Text(exercise, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, maxLines = 2)
+                com.fittakip.app.data.exerciseTr(exercise)?.let { HintText(it) }
+                Text(
+                    "Set $setNo" + (item?.let { " / ${it.sets} · hedef ${it.repsLabel}" } ?: "") + (if (item?.note?.isNotBlank() == true) " · ${item.note}" else ""),
+                    style = MaterialTheme.typography.titleMedium, color = FitColors.Lime
+                )
+                lastTime?.let { HintText("Geçen sefer: $it") }
+
+                Spacer(Modifier.weight(1f))
+                if (resting) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("DİNLEN", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 3.sp)
+                        Text("%d:%02d".format(left / 60, left % 60), fontSize = 88.sp, fontWeight = FontWeight.Black, color = FitColors.Lime)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SecondaryButton("+30 sn", onClick = { vm.addRest(30) })
+                            SecondaryButton("Atla", onClick = { vm.stopRest() })
+                        }
+                    }
+                } else {
+                    BigAdjust("kg", kg, onMinus = { onKg(((kg.toNum() ?: 0.0) - step).coerceAtLeast(0.0).clean()) }, onPlus = { onKg(((kg.toNum() ?: 0.0) + step).clean()) })
+                    BigAdjust("tekrar", reps, onMinus = { onReps(((reps.toNum()?.toInt() ?: 0) - 1).coerceAtLeast(0).toString()) }, onPlus = { onReps(((reps.toNum()?.toInt() ?: 0) + 1).toString()) })
+                }
+                Spacer(Modifier.weight(1f))
+
+                Button(
+                    onClick = onLog, enabled = !resting && (reps.toNum() ?: 0.0) > 0,
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = FitColors.Lime, contentColor = Color(0xFF0E1200)),
+                    modifier = Modifier.fillMaxWidth().height(84.dp)
+                ) {
+                    Text(if (resting) "Dinleniyorsun…" else "✓  ${kg.toNum()?.clean() ?: kg} × $reps  ·  Set tamam", fontSize = 22.sp, fontWeight = FontWeight.Black)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HintText(nextName?.let { "Sonraki: $it" } ?: "Son hareket", Modifier.weight(1f))
+                    if (nextName != null) TextButton(onClick = onSkip) { Text("Bu hareketi geç →") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BigAdjust(unit: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalButton(onClick = onMinus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp), contentPadding = PaddingValues(0.dp)) {
+            Text("−", fontSize = 40.sp, fontWeight = FontWeight.Bold)
+        }
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value.ifBlank { "0" }, fontSize = 64.sp, fontWeight = FontWeight.Black)
+            Text(unit, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        FilledTonalButton(onClick = onPlus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp), contentPadding = PaddingValues(0.dp)) {
+            Text("+", fontSize = 40.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

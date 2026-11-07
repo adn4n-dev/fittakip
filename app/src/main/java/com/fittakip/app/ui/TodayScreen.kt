@@ -83,9 +83,6 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
         if (g == null) return@LazyColumn
 
         item { PlanHero(vm, settings, sets, today, onStart = { vm.startTodayWorkout(); onTab(2) }, onSetup = { onOpen(Sub.PROGRAM) }) }
-        item { WeekStrip(settings, g, today) { onOpen(Sub.PROGRAM) } }
-        item { StreakCard(g, today) }
-        if (shown("QUESTS")) item { QuestsCard(g) }
         if (shown("QUICK")) item {
             val p = state.profile
             val target = p?.let { Calculator.calculate(it, settings).target }
@@ -96,9 +93,12 @@ fun TodayScreen(vm: AppViewModel, onTab: (Int) -> Unit, onOpen: (Sub) -> Unit) {
                 QuickTile("Set", "${g.todaySets}", "bugün", FitColors.Orange, Modifier.weight(1f)) { onTab(2) }
             }
         }
-        if (shown("LEVEL")) item { LevelCard(g) { onOpen(Sub.ACHIEVEMENTS) } }
+        item { WeekStrip(settings, g, today) { onOpen(Sub.PROGRAM) } }
+        item { StreakCard(g, today) }
         if (shown("CHECKIN") && settings.checkinItems.isNotEmpty()) item { CheckinCard(g) { onOpen(Sub.HABITS) } }
         if (shown("INSIGHTS") && g.insights.isNotEmpty()) item { InsightsCard(g) }
+        if (shown("QUESTS")) item { QuestsCard(g) }
+        if (shown("LEVEL")) item { LevelCard(g) { onOpen(Sub.ACHIEVEMENTS) } }
         if (shown("BADGES")) {
             val recent = g.achievements.filter { it.unlocked }.takeLast(6).reversed()
             if (recent.isNotEmpty()) item { RecentBadges(recent.map { it.emoji to it.title }) { onOpen(Sub.ACHIEVEMENTS) } }
