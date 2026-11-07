@@ -1,6 +1,8 @@
 package com.fittakip.app.data
 
 import android.content.Context
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -42,7 +44,7 @@ object FoodVision {
         val jpeg = loadScaled(context, uri) ?: throw VisionException("Fotoğraf açılamadı.")
         val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
         val text = try {
-            val model = com.google.firebase.Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(GEMINI)
+            val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(GEMINI)
             model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
         } catch (e: Exception) {
             val m = (e.message ?: "") + " " + (e.cause?.message ?: "")
