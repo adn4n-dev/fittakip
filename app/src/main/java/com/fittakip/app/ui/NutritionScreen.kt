@@ -500,15 +500,19 @@ private fun AddFoodSheet(
     var photoBusy by remember { mutableStateOf(false) }
     var photoResult by remember { mutableStateOf<com.fittakip.app.data.FoodVision.Result?>(null) }
     var photoMsg by remember { mutableStateOf<String?>(null) }
-    var pendingCamera by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingCamera by rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
+    var photoJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var photoSecs by remember { mutableIntStateOf(0) }
+    LaunchedEffect(photoBusy) { photoSecs = 0; while (photoBusy) { kotlinx.coroutines.delay(1000); photoSecs++ } }
     fun analyze(uri: android.net.Uri) {
         photoBusy = true; photoMsg = null; photoResult = null
-        scope.launch {
+        photoJob = scope.launch {
             try {
                 val r = com.fittakip.app.data.FoodVision.analyze(context, uri)
                 if (r.items.isEmpty()) photoMsg = r.note.ifBlank { "Fotoğrafta yiyecek bulamadım." } else photoResult = r
             } catch (e: Exception) {
-                photoMsg = (e as? com.fittakip.app.data.FoodVision.VisionException)?.message ?: "İnternet yok ya da bağlantı koptu."
+                if (e !is kotlinx.coroutines.CancellationException)
+                    photoMsg = (e as? com.fittakip.app.data.FoodVision.VisionException)?.message ?: "Hata: ${e.message ?: e.javaClass.simpleName}"
             }
             photoBusy = false
         }
@@ -626,7 +630,8 @@ private fun AddFoodSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(10.dp))
-                        Text("Tabağına bakıyorum…")
+                        Text("Tabağına bakıyorum… $photoSecs sn", modifier = Modifier.weight(1f))
+                        TextButton(onClick = { photoJob?.cancel(); photoBusy = false }) { Text("Vazgeç") }
                     }
                 }
                 photoMsg?.let { m -> item { Text(m, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }

@@ -45,4 +45,14 @@ class OnlineFoodsTest {
         val list = m.invoke(OnlineFoods, """{"products":[$one,$one]}""") as List<FoodItem>
         assertEquals(1, list.size)
     }
+
+    @Test
+    fun newSearchService_hitsWithBrandTags() {
+        val m = OnlineFoods::class.java.getDeclaredMethod("parseHits", String::class.java).apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val list = m.invoke(OnlineFoods, """{"hits":[{"product_name":"Ayran","product_name_tr":"Ayran","brands":["sutas"],
+            "serving_quantity":200,"nutriments":{"energy-kcal_100g":38,"proteins_100g":1.7}}],"count":1}""") as List<FoodItem>
+        assertEquals("Ayran · Sutas", list.single().name)
+        assertEquals(76, list.single().kcal)
+    }
 }

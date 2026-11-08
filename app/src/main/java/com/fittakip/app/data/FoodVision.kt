@@ -44,9 +44,21 @@ object FoodVision {
         val jpeg = loadScaled(context, uri) ?: throw VisionException("Fotoğraf açılamadı.")
         val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
         val text = try {
-            val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(GEMINI)
-            model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
+            val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(
+                modelName = GEMINI,
+                generationConfig = com.google.firebase.ai.type.generationConfig {
+                    responseMimeType = "application/json"
+                    temperature = 0.2f
+                },
+                requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 45_000)
+            )
+            kotlinx.coroutines.withTimeout(50_000) {
+                model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            throw VisionException("Gemini 50 saniyede cevap vermedi. İnternetini kontrol edip tekrar dene.")
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             val m = (e.message ?: "") + " " + (e.cause?.message ?: "")
             throw VisionException(
                 when {
@@ -54,7 +66,8 @@ object FoodVision {
                         "Firebase erişimi reddetti. Firebase > App Check'te AI Logic için zorunluluğu kaldır."
                     m.contains("quota", true) || m.contains("429") || m.contains("RESOURCE_EXHAUSTED", true) -> "Günlük ücretsiz kota doldu, yarın tekrar dene."
                     m.contains("not been used", true) || m.contains("disabled", true) -> "Firebase'de AI Logic (Gemini Developer API) henüz açılmamış."
-                    m.contains("Unable to resolve host", true) || m.contains("timeout", true) -> "İnternet yok ya da çok yavaş."
+                    m.contains("Unable to resolve host", true) || m.contains("timeout", true) || m.contains("timed out", true) -> "İnternet yok ya da çok yavaş, Gemini'ye ulaşılamadı."
+                    m.contains("not found", true) && m.contains("model", true) -> "Gemini modeli bulunamadı (${GEMINI})."
                     else -> "Fotoğraf analiz edilemedi: ${e.message ?: e.javaClass.simpleName}"
                 }
             )

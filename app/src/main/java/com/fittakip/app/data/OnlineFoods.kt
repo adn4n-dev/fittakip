@@ -14,30 +14,39 @@ import kotlin.math.roundToInt
  * Arama hız sınırı dakikada 10 istek olduğu için sonuçlar bellekte saklanır.
  */
 object OnlineFoods {
-    private const val UA = "FitTakip/1.5 (Android; github.com/adn4n-dev/fittakip)"
+    private const val UA = "FitTakip/1.9 (Android; github.com/adn4n-dev/fittakip)"
     private const val FIELDS = "code,product_name,product_name_tr,brands,serving_size,serving_quantity,nutriments"
     private val cache = object : LinkedHashMap<String, List<FoodItem>>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<FoodItem>>?) = size > 40
     }
 
-    class OnlineException(message: String) : Exception(message)
+    class OnlineException(message: String, val retry: Boolean = false) : Exception(message)
 
     suspend fun search(query: String): List<FoodItem> = withContext(Dispatchers.IO) {
         val q = query.trim().lowercase()
         synchronized(cache) { cache[q] }?.let { return@withContext it }
         val enc = URLEncoder.encode(q, "UTF-8")
-        fun url(host: String) = "https://$host/cgi/search.pl?search_terms=$enc&search_simple=1&action=process&json=1&page_size=40&fields=$FIELDS"
-        val tr = parseList(get(url("tr.openfoodfacts.org")))
-        val all = if (tr.size >= 8) tr else (tr + parseList(get(url("world.openfoodfacts.org")))).distinctBy { it.name.lowercase() to it.kcal }
+        // 1) Yeni arama servisi (search-a-licious). 2) Çalışmazsa eski arama.
+        val all = try {
+            parseHits(getWithRetry("https://search.openfoodfacts.org/search?q=$enc&langs=tr,en&page_size=40"))
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            parseList(getWithRetry("https://world.openfoodfacts.org/cgi/search.pl?search_terms=$enc&search_simple=1&action=process&json=1&page_size=40&fields=$FIELDS"))
+        }.distinctBy { it.name.lowercase() to it.kcal }
         synchronized(cache) { cache[q] = all }
         all
     }
 
     /** Barkoddan ürün; veritabanında yoksa null. */
     suspend fun byBarcode(code: String): FoodItem? = withContext(Dispatchers.IO) {
-        val body = get("https://world.openfoodfacts.org/api/v2/product/${URLEncoder.encode(code, "UTF-8")}.json?fields=$FIELDS")
+        val body = getWithRetry("https://world.openfoodfacts.org/api/v2/product/${URLEncoder.encode(code, "UTF-8")}.json?fields=$FIELDS")
         val o = JSONObject(body)
         if (o.optInt("status") != 1) null else o.optJSONObject("product")?.let { parse(it) }
+    }
+
+    private fun parseHits(body: String): List<FoodItem> {
+        val arr = JSONObject(body).optJSONArray("hits") ?: throw OnlineException("Arama servisi beklenmeyen cevap verdi.")
+        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it)) }
     }
 
     private fun parseList(body: String): List<FoodItem> {
@@ -56,7 +65,8 @@ object OnlineFoods {
         val prot = n.num("proteins_100g") ?: 0.0
         val carb = n.num("carbohydrates_100g") ?: 0.0
         val fat = n.num("fat_100g") ?: 0.0
-        val brand = p.optString("brands").split(',').firstOrNull()?.trim().orEmpty()
+        val brand = (p.optJSONArray("brands")?.optString(0) ?: p.optString("brands").split(',').firstOrNull())
+            ?.trim()?.replace('-', ' ')?.replaceFirstChar { it.titlecase() }.orEmpty()
         val serving = p.optString("serving_quantity").toDoubleOrNull()?.takeIf { it in 1.0..1500.0 }
         val f = (serving ?: 100.0) / 100.0
         val label = if (brand.isNotBlank() && !name.contains(brand, true)) "$name · $brand" else name
@@ -66,6 +76,11 @@ object OnlineFoods {
 
     private fun JSONObject.num(key: String): Double? = if (has(key)) optDouble(key).takeIf { !it.isNaN() } else null
 
+    /** Sunucu yoğunsa (502/503/504) bir kez daha dener. */
+    private fun getWithRetry(url: String): String = try { get(url) } catch (e: OnlineException) {
+        if (e.retry) { Thread.sleep(1500); get(url) } else throw e
+    }
+
     private fun get(url: String): String {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
@@ -74,6 +89,7 @@ object OnlineFoods {
             c.setRequestProperty("User-Agent", UA)
             val code = c.responseCode
             if (code == 429) throw OnlineException("Çok hızlı arandı, birkaç saniye sonra tekrar dene.")
+            if (code in 502..504) throw OnlineException("Open Food Facts şu an yoğun ($code), birazdan tekrar dene.", retry = true)
             if (code !in 200..299) throw OnlineException("Yemek veritabanına ulaşılamadı ($code).")
             return c.inputStream.bufferedReader().use { it.readText() }
         } finally {
