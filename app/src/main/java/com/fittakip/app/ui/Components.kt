@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.compositeOver
@@ -440,10 +441,13 @@ fun TripleRing(
                 val tl = Offset(inset, inset)
                 val sz = Size(size.width - inset * 2, size.height - inset * 2)
                 drawArc(track, -90f, 360f, false, tl, sz, style = Stroke(stroke))
-                if (v > 0f) drawArc(
-                    Brush.sweepGradient(listOf(col.copy(alpha = 0.6f), col, col)),
-                    -90f, 360f * v, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round)
-                )
+                // Renk geçişi halkanın başladığı yerden (saat 12) ucuna kadar: sönükten parlağa, kırılma yok.
+                if (v > 0f) rotate(-90f) {
+                    drawArc(
+                        Brush.sweepGradient(0f to col.copy(alpha = 0.55f), v.coerceAtLeast(0.01f) to col, 1f to col),
+                        0f, 360f * v, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round)
+                    )
+                }
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
