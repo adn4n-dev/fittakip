@@ -44,24 +44,25 @@ object FoodVision {
         val jpeg = loadScaled(context, uri, 768) ?: throw VisionException("Fotoğraf açılamadı.")
         val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
         // Düşünmeyi en aza indir (fotoğrafta uzun "düşünme" cevabı dakikalarca geciktirebiliyor); model desteklemezse LOW dene.
+        // Düşünmeyi kısa tut (LOW). Model bu ayarı desteklemezse ayarsız tekrar dene.
         val text = try {
-            ask(bmp, com.google.firebase.ai.type.ThinkingLevel.MINIMAL)
-        } catch (e: ThinkingUnsupported) {
             ask(bmp, com.google.firebase.ai.type.ThinkingLevel.LOW)
+        } catch (e: ThinkingUnsupported) {
+            ask(bmp, null)
         }
         parse(text)
     }
 
     private class ThinkingUnsupported : Exception()
 
-    private suspend fun ask(bmp: android.graphics.Bitmap, level: com.google.firebase.ai.type.ThinkingLevel): String {
+    private suspend fun ask(bmp: android.graphics.Bitmap, level: com.google.firebase.ai.type.ThinkingLevel?): String {
         try {
             val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(
                 modelName = GEMINI,
                 generationConfig = com.google.firebase.ai.type.generationConfig {
                     responseMimeType = "application/json"
                     temperature = 0.2f
-                    thinkingConfig = com.google.firebase.ai.type.thinkingConfig { thinkingLevel = level }
+                    if (level != null) thinkingConfig = com.google.firebase.ai.type.thinkingConfig { thinkingLevel = level }
                 },
                 requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 90_000)
             )
@@ -69,7 +70,7 @@ object FoodVision {
                 model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
             }
         } catch (e: com.google.firebase.ai.type.ServerException) {
-            if (level == com.google.firebase.ai.type.ThinkingLevel.MINIMAL && (e.message ?: "").contains("think", true)) throw ThinkingUnsupported()
+            if (level != null && (e.message ?: "").contains("thinking", true)) throw ThinkingUnsupported()
             throw VisionException("Gemini sunucusu hata verdi: ${e.message}")
         } catch (e: com.google.firebase.ai.type.ServiceDisabledException) {
             throw VisionException("Firebase'de AI Logic (Gemini Developer API) kapalı ya da yeni açıldı; birkaç dakika sonra dene.")
@@ -84,6 +85,8 @@ object FoodVision {
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             val m = (e.message ?: "") + " " + (e.cause?.message ?: "")
+            // Hata hangi sınıftan gelirse gelsin: "thinking level desteklenmiyor" → ayarsız tekrar
+            if (level != null && m.contains("thinking", true)) throw ThinkingUnsupported()
             throw VisionException(
                 when {
                     m.contains("App Check", true) || m.contains("PERMISSION_DENIED", true) || m.contains("403") ->

@@ -58,19 +58,24 @@ suspend fun runChecks(context: Context): List<Check> = coroutineScope {
 
     val gemini = async {
         if (!online) return@async Check("Fotoğraftan kalori (Gemini)", 2, "İnternet olmadan çalışmaz.")
+        suspend fun ping(level: com.google.firebase.ai.type.ThinkingLevel?): Double {
+            val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI())
+                .generativeModel(
+                    modelName = "gemini-3.8-flash",
+                    generationConfig = com.google.firebase.ai.type.generationConfig {
+                        if (level != null) thinkingConfig = com.google.firebase.ai.type.thinkingConfig { thinkingLevel = level }
+                    },
+                    requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 20_000)
+                )
+            val t0 = System.currentTimeMillis()
+            model.generateContent("Sadece 'tamam' yaz.").text.orEmpty()
+            return (System.currentTimeMillis() - t0) / 1000.0
+        }
         val r = withTimeoutOrNull(25_000) {
             runCatching {
-                val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI())
-                    .generativeModel(
-                        modelName = "gemini-3.8-flash",
-                        generationConfig = com.google.firebase.ai.type.generationConfig {
-                            thinkingConfig = com.google.firebase.ai.type.thinkingConfig { thinkingLevel = com.google.firebase.ai.type.ThinkingLevel.MINIMAL }
-                        },
-                        requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 20_000)
-                    )
-                val t0 = System.currentTimeMillis()
-                model.generateContent("Sadece 'tamam' yaz.").text.orEmpty()
-                (System.currentTimeMillis() - t0) / 1000.0
+                try { ping(com.google.firebase.ai.type.ThinkingLevel.LOW) } catch (e: Exception) {
+                    if ((e.message ?: "").contains("thinking", true)) ping(null) else throw e
+                }
             }
         }
         when {
