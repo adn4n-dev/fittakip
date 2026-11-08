@@ -46,11 +46,13 @@ object FoodVision {
         // Düşünmeyi en aza indir (fotoğrafta uzun "düşünme" cevabı dakikalarca geciktirebiliyor); model desteklemezse LOW dene.
         val text = try {
             ask(bmp, com.google.firebase.ai.type.ThinkingLevel.MINIMAL)
-        } catch (e: com.google.firebase.ai.type.InvalidRequestException) {
+        } catch (e: ThinkingUnsupported) {
             ask(bmp, com.google.firebase.ai.type.ThinkingLevel.LOW)
         }
         parse(text)
     }
+
+    private class ThinkingUnsupported : Exception()
 
     private suspend fun ask(bmp: android.graphics.Bitmap, level: com.google.firebase.ai.type.ThinkingLevel): String {
         try {
@@ -66,8 +68,15 @@ object FoodVision {
             return kotlinx.coroutines.withTimeout(95_000) {
                 model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
             }
-        } catch (e: com.google.firebase.ai.type.InvalidRequestException) {
-            throw e
+        } catch (e: com.google.firebase.ai.type.ServerException) {
+            if (level == com.google.firebase.ai.type.ThinkingLevel.MINIMAL && (e.message ?: "").contains("think", true)) throw ThinkingUnsupported()
+            throw VisionException("Gemini sunucusu hata verdi: ${e.message}")
+        } catch (e: com.google.firebase.ai.type.ServiceDisabledException) {
+            throw VisionException("Firebase'de AI Logic (Gemini Developer API) kapalı ya da yeni açıldı; birkaç dakika sonra dene.")
+        } catch (e: com.google.firebase.ai.type.APINotConfiguredException) {
+            throw VisionException("Firebase'de AI Logic kurulumu tamamlanmamış (Gemini Developer API seçilmeli).")
+        } catch (e: com.google.firebase.ai.type.QuotaExceededException) {
+            throw VisionException("Günlük ücretsiz Gemini kotası doldu, yarın tekrar dene.")
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             throw VisionException("Gemini 90 saniyede cevap vermedi. Ayarlar > 🩺 Uygulama durumu'na bakıp ekran görüntüsünü at.")
         } catch (e: com.google.firebase.ai.type.RequestTimeoutException) {
