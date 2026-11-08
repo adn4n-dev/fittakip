@@ -61,13 +61,21 @@ suspend fun runChecks(context: Context): List<Check> = coroutineScope {
         val r = withTimeoutOrNull(25_000) {
             runCatching {
                 val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI())
-                    .generativeModel(modelName = "gemini-3.8-flash", requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 20_000))
+                    .generativeModel(
+                        modelName = "gemini-3.8-flash",
+                        generationConfig = com.google.firebase.ai.type.generationConfig {
+                            thinkingConfig = com.google.firebase.ai.type.thinkingConfig { thinkingLevel = com.google.firebase.ai.type.ThinkingLevel.MINIMAL }
+                        },
+                        requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 20_000)
+                    )
+                val t0 = System.currentTimeMillis()
                 model.generateContent("Sadece 'tamam' yaz.").text.orEmpty()
+                (System.currentTimeMillis() - t0) / 1000.0
             }
         }
         when {
             r == null -> Check("Fotoğraftan kalori (Gemini)", 2, "25 saniyede cevap gelmedi. Fotoğrafın takılmasının sebebi bu.")
-            r.isSuccess -> Check("Fotoğraftan kalori (Gemini)", 0, "Çalışıyor.")
+            r.isSuccess -> Check("Fotoğraftan kalori (Gemini)", 0, "Çalışıyor (deneme cevabı ${"%.1f".format(r.getOrThrow())} sn).")
             else -> {
                 val m = (r.exceptionOrNull()?.message ?: "") + " " + (r.exceptionOrNull()?.cause?.message ?: "")
                 val hint = when {

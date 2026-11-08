@@ -41,22 +41,37 @@ object FoodVision {
 
     /** Firebase AI Logic üzerinden Gemini: anahtar gerekmez, sonuç birkaç saniyede. */
     suspend fun analyze(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
-        val jpeg = loadScaled(context, uri) ?: throw VisionException("Fotoğraf açılamadı.")
+        val jpeg = loadScaled(context, uri, 768) ?: throw VisionException("Fotoğraf açılamadı.")
         val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+        // Düşünmeyi en aza indir (fotoğrafta uzun "düşünme" cevabı dakikalarca geciktirebiliyor); model desteklemezse LOW dene.
         val text = try {
+            ask(bmp, com.google.firebase.ai.type.ThinkingLevel.MINIMAL)
+        } catch (e: com.google.firebase.ai.type.InvalidRequestException) {
+            ask(bmp, com.google.firebase.ai.type.ThinkingLevel.LOW)
+        }
+        parse(text)
+    }
+
+    private suspend fun ask(bmp: android.graphics.Bitmap, level: com.google.firebase.ai.type.ThinkingLevel): String {
+        try {
             val model = Firebase.ai(backend = com.google.firebase.ai.type.GenerativeBackend.googleAI()).generativeModel(
                 modelName = GEMINI,
                 generationConfig = com.google.firebase.ai.type.generationConfig {
                     responseMimeType = "application/json"
                     temperature = 0.2f
+                    thinkingConfig = com.google.firebase.ai.type.thinkingConfig { thinkingLevel = level }
                 },
-                requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 45_000)
+                requestOptions = com.google.firebase.ai.type.RequestOptions(timeoutInMillis = 90_000)
             )
-            kotlinx.coroutines.withTimeout(50_000) {
+            return kotlinx.coroutines.withTimeout(95_000) {
                 model.generateContent(com.google.firebase.ai.type.content { image(bmp); text(PROMPT) }).text.orEmpty()
             }
+        } catch (e: com.google.firebase.ai.type.InvalidRequestException) {
+            throw e
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            throw VisionException("Gemini 50 saniyede cevap vermedi. İnternetini kontrol edip tekrar dene.")
+            throw VisionException("Gemini 90 saniyede cevap vermedi. Ayarlar > 🩺 Uygulama durumu'na bakıp ekran görüntüsünü at.")
+        } catch (e: com.google.firebase.ai.type.RequestTimeoutException) {
+            throw VisionException("Gemini 90 saniyede cevap vermedi. Ayarlar > 🩺 Uygulama durumu'na bakıp ekran görüntüsünü at.")
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             val m = (e.message ?: "") + " " + (e.cause?.message ?: "")
@@ -66,13 +81,12 @@ object FoodVision {
                         "Firebase erişimi reddetti. Firebase > App Check'te AI Logic için zorunluluğu kaldır."
                     m.contains("quota", true) || m.contains("429") || m.contains("RESOURCE_EXHAUSTED", true) -> "Günlük ücretsiz kota doldu, yarın tekrar dene."
                     m.contains("not been used", true) || m.contains("disabled", true) -> "Firebase'de AI Logic (Gemini Developer API) henüz açılmamış."
-                    m.contains("Unable to resolve host", true) || m.contains("timeout", true) || m.contains("timed out", true) -> "İnternet yok ya da çok yavaş, Gemini'ye ulaşılamadı."
-                    m.contains("not found", true) && m.contains("model", true) -> "Gemini modeli bulunamadı (${GEMINI})."
+                    m.contains("Unable to resolve host", true) -> "İnternet yok, Gemini'ye ulaşılamadı."
+                    m.contains("not found", true) && m.contains("model", true) -> "Gemini modeli bulunamadı ($GEMINI)."
                     else -> "Fotoğraf analiz edilemedi: ${e.message ?: e.javaClass.simpleName}"
                 }
             )
         }
-        parse(text)
     }
 
     /** Modelin cevabındaki JSON'u ayıklar. */
