@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -713,8 +715,19 @@ private fun FocusMode(
             now = System.currentTimeMillis()
         }
         val left = restEnd?.let { ((it - now) / 1000).coerceAtLeast(0) } ?: 0
+        // Set kaydedilince ortada büyük ✓ patlar ve kaybolur, telefon titrer
+        val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+        val burst = remember { androidx.compose.animation.core.Animatable(0f) }
+        var burstKey by remember { mutableIntStateOf(0) }
+        LaunchedEffect(burstKey) {
+            if (burstKey == 0) return@LaunchedEffect
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            burst.snapTo(0f)
+            burst.animateTo(1f, androidx.compose.animation.core.tween(750))
+        }
         val resting = restEnd != null && left > 0
         Surface(color = Color(0xFF07090C), modifier = Modifier.fillMaxSize()) {
+          Box(Modifier.fillMaxSize()) {
             Column(
                 Modifier.fillMaxSize().systemBarsPadding().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -749,7 +762,7 @@ private fun FocusMode(
                 Spacer(Modifier.weight(1f))
 
                 Button(
-                    onClick = onLog, enabled = !resting && (reps.toNum() ?: 0.0) > 0,
+                    onClick = { burstKey++; onLog() }, enabled = !resting && (reps.toNum() ?: 0.0) > 0,
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = FitColors.Lime, contentColor = Color(0xFF0E1200)),
                     modifier = Modifier.fillMaxWidth().height(84.dp)
@@ -761,6 +774,20 @@ private fun FocusMode(
                     if (nextName != null) TextButton(onClick = onSkip) { Text("Bu hareketi geç →") }
                 }
             }
+            if (burst.value in 0.01f..0.99f) {
+                val v = burst.value
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "✓", fontSize = 140.sp, fontWeight = FontWeight.Black, color = FitColors.Lime,
+                        modifier = Modifier.graphicsLayer {
+                            val s = 0.6f + 0.6f * kotlin.math.min(1f, v * 3f)
+                            scaleX = s; scaleY = s
+                            alpha = if (v < 0.4f) 1f else 1f - (v - 0.4f) / 0.6f
+                        }
+                    )
+                }
+            }
+          }
         }
     }
 }
@@ -772,7 +799,16 @@ private fun BigAdjust(unit: String, value: String, onMinus: () -> Unit, onPlus: 
             Text("−", fontSize = 40.sp, fontWeight = FontWeight.Bold)
         }
         Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }, horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value.ifBlank { "0" }, fontSize = 64.sp, fontWeight = FontWeight.Black)
+            // Rakam artınca yukarı, azalınca aşağı kayar (sayaç gibi)
+            androidx.compose.animation.AnimatedContent(
+                targetState = value.ifBlank { "0" },
+                transitionSpec = {
+                    val up = (targetState.replace(',', '.').toDoubleOrNull() ?: 0.0) > (initialState.replace(',', '.').toDoubleOrNull() ?: 0.0)
+                    (androidx.compose.animation.slideInVertically { h -> if (up) h else -h } + androidx.compose.animation.fadeIn()) togetherWith
+                        (androidx.compose.animation.slideOutVertically { h -> if (up) -h else h } + androidx.compose.animation.fadeOut())
+                },
+                label = "num"
+            ) { v -> Text(v, fontSize = 64.sp, fontWeight = FontWeight.Black) }
             Text(unit, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         FilledTonalButton(onClick = onPlus, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(76.dp).semantics { contentDescription = "$unit artır" }, contentPadding = PaddingValues(0.dp)) {

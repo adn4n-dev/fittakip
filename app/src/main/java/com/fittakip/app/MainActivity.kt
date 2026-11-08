@@ -11,6 +11,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import com.fittakip.app.ui.pressScale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -163,7 +169,20 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
                     .padding(padding)
                     .fillMaxSize()
             ) {
-                AnimatedContent(targetState = sub, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "sub") { s ->
+                AnimatedContent(
+                    targetState = sub,
+                    transitionSpec = {
+                        val dur = 280
+                        if (targetState != null && initialState == null) // alt ekran açılıyor: sağdan gelir
+                            (slideInHorizontally(androidx.compose.animation.core.tween(dur)) { it / 3 } + fadeIn(androidx.compose.animation.core.tween(dur))) togetherWith
+                                (fadeOut(androidx.compose.animation.core.tween(dur / 2)) + scaleOut(targetScale = 0.96f))
+                        else if (targetState == null) // geri: sağa çıkar
+                            (fadeIn(androidx.compose.animation.core.tween(dur)) + scaleIn(initialScale = 0.96f)) togetherWith
+                                (slideOutHorizontally(androidx.compose.animation.core.tween(dur)) { it / 3 } + fadeOut(androidx.compose.animation.core.tween(dur / 2)))
+                        else fadeIn() togetherWith fadeOut()
+                    },
+                    label = "sub"
+                ) { s ->
                     when (s) {
                         Sub.ACHIEVEMENTS -> AchievementsScreen(vm) { sub = null }
                         Sub.REPORT -> WeeklyReportScreen(vm) { sub = null }
@@ -172,7 +191,16 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
                         Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
                         Sub.PROGRAM -> ProgramScreen(vm) { sub = null }
                         Sub.STATUS -> StatusScreen { sub = Sub.SETTINGS }
-                        null -> Crossfade(targetState = tab, label = "tab") { t ->
+                        null -> AnimatedContent(
+                            targetState = tab,
+                            transitionSpec = {
+                                // Sağdaki sekmeye geçince sağdan, soldakine geçince soldan kayar
+                                val dir = if (targetState > initialState) 1 else -1
+                                (slideInHorizontally(androidx.compose.animation.core.tween(260)) { w -> dir * w / 4 } + fadeIn(androidx.compose.animation.core.tween(260))) togetherWith
+                                    (slideOutHorizontally(androidx.compose.animation.core.tween(260)) { w -> -dir * w / 4 } + fadeOut(androidx.compose.animation.core.tween(180)))
+                            },
+                            label = "tab"
+                        ) { t ->
                             when (t) {
                                 0 -> TodayScreen(vm, onTab = { tab = it }, onOpen = { sub = it })
                                 1 -> NutritionScreen(vm)
@@ -245,16 +273,23 @@ private fun FloatingNav(tabs: List<Pair<String, androidx.compose.ui.graphics.vec
                 val bg by animateColorAsState(if (on) FitColors.Lime else androidx.compose.ui.graphics.Color.Transparent, label = "bg")
                 val fg by animateColorAsState(if (on) androidx.compose.ui.graphics.Color(0xFF0E1200) else FitColors.Muted, label = "fg")
                 // Her sekmenin adı her zaman görünür (sadece simgeyle hangi ekran olduğu tahmin edilmesin)
+                val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                // Seçilince simge yaylanarak büyüyüp yerine oturur
+                val iconScale by androidx.compose.animation.core.animateFloatAsState(
+                    if (on) 1.12f else 1f,
+                    androidx.compose.animation.core.spring(dampingRatio = 0.35f, stiffness = 400f), label = "icon"
+                )
                 androidx.compose.foundation.layout.Column(
                     Modifier
                         .weight(1f)
+                        .pressScale(src, 0.92f)
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
                         .background(bg)
-                        .clickable { onSelect(i) }
+                        .clickable(interactionSource = src, indication = null) { onSelect(i) }
                         .padding(vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(22.dp))
+                    Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(22.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
                     Text(
                         label, color = fg, maxLines = 1,
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),

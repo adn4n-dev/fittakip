@@ -6,6 +6,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.compositeOver
@@ -104,6 +106,7 @@ fun FitCard(
 ) {
     Column(
         modifier
+            .enterUp()
             .fillMaxWidth()
             .clip(CardShape)
             .background(Brush.verticalGradient(listOf(Color(0xFF1C1F26), Color(0xFF15171C))))
@@ -123,6 +126,7 @@ fun GlowCard(
 ) {
     Column(
         modifier
+            .enterUp()
             .fillMaxWidth()
             .clip(CardShape)
             .background(Brush.linearGradient(colors))
@@ -229,7 +233,10 @@ fun Pill(text: String, color: Color, modifier: Modifier = Modifier, onClick: (()
         .clip(shape)
         .background(color.copy(alpha = 0.16f))
         .border(1.dp, color.copy(alpha = 0.22f), shape)
-    if (onClick != null) m = m.clickable(onClick = onClick)
+    if (onClick != null) {
+        val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        m = Modifier.pressScale(src).then(m).clickable(interactionSource = src, indication = androidx.compose.material3.ripple(), onClick = onClick)
+    }
     Text(
         text,
         modifier = m.padding(horizontal = 14.dp, vertical = if (onClick != null) 10.dp else 6.dp),   // dokunulabilenler parmak boyunda
@@ -328,12 +335,16 @@ fun SelectCard(
     subtitle: String? = null
 ) {
     val accent = MaterialTheme.colorScheme.primary
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val bg by animateColorAsState(if (selected) accent.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f), tween(220), label = "sbg")
+    val bd by animateColorAsState(if (selected) accent else Color.White.copy(alpha = 0.06f), tween(220), label = "sbd")
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.pressScale(src),
         shape = RoundedCornerShape(16.dp),
-        color = if (selected) accent.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f),
-        border = BorderStroke(1.5.dp, if (selected) accent else Color.White.copy(alpha = 0.06f))
+        color = bg,
+        border = BorderStroke(1.5.dp, bd),
+        interactionSource = src
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Text(
@@ -357,18 +368,22 @@ fun PrimaryButton(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(18.dp)
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val brush = if (enabled) Brush.horizontalGradient(listOf(FitColors.Lime, FitColors.Lime.copy(alpha = 0.75f).compositeOver(Color(0xFF4DE1C1))))
     else Brush.horizontalGradient(listOf(FitColors.CardHigh, FitColors.CardHigh))
     Button(
-        onClick = onClick,
+        onClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onClick() },
         enabled = enabled,
         shape = shape,
+        interactionSource = src,
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
             contentColor = Color(0xFF0E1200), disabledContentColor = FitColors.Muted
         ),
         contentPadding = PaddingValues(horizontal = 18.dp),
         modifier = modifier
+            .pressScale(src)
             .fillMaxWidth()
             .height(56.dp)
             .clip(shape)
@@ -384,12 +399,14 @@ fun PrimaryButton(
 
 @Composable
 fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true) {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        modifier = modifier.height(52.dp)
+        interactionSource = src,
+        modifier = modifier.pressScale(src).height(52.dp)
     ) {
         if (icon != null) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -429,7 +446,10 @@ fun TripleRing(
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(centerTop, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+            // Sayı ise sayarak değişsin (ör. kalan kalori 1450 → 1180)
+            val n = centerTop.toIntOrNull()
+            val counted by androidx.compose.animation.core.animateIntAsState(n ?: 0, tween(700), label = "count")
+            Text(if (n != null) counted.toString() else centerTop, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
             Text(centerBottom, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -501,6 +521,7 @@ fun MacroBar(label: String, eaten: Double, target: Int, color: Color) {
 
 @Composable
 fun ProgressBar(progress: Float, color: Color, height: Dp = 8.dp) {
+    val p by animateFloatAsState(progress.coerceIn(0f, 1f), spring(dampingRatio = 0.8f, stiffness = 120f), label = "bar")
     Box(
         Modifier
             .fillMaxWidth()
@@ -510,7 +531,7 @@ fun ProgressBar(progress: Float, color: Color, height: Dp = 8.dp) {
     ) {
         Box(
             Modifier
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxWidth(p)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(50))
                 .background(color)

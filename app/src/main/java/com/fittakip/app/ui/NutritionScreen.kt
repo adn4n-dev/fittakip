@@ -1,6 +1,8 @@
 package com.fittakip.app.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -145,7 +147,11 @@ fun NutritionScreen(vm: AppViewModel) {
                         if (list.size >= 2) TextButton(onClick = { saveMealOf = m }) { Text("Öğünü kaydet") }
                     }
                 }
-                items(list, key = { it.id }) { f -> FoodRow(f, onClick = { editFood = f }) { vm.deleteFood(f) } }
+                items(list, key = { it.id }) { f ->
+                    SwipeToDelete(onDelete = { vm.deleteFood(f) }, modifier = Modifier.animateItem()) {
+                        FoodRow(f, onClick = { editFood = f }) { vm.deleteFood(f) }
+                    }
+                }
             }
         }
         if (foods.isNotEmpty()) item { HintText("Bir kayda dokunarak porsiyonunu ya da öğününü değiştirebilirsin.") }
@@ -634,6 +640,9 @@ private fun AddFoodSheet(
                         TextButton(onClick = { photoJob?.cancel(); photoBusy = false }) { Text("Vazgeç") }
                     }
                 }
+                if (photoBusy) item {
+                    ShimmerRows(2)
+                }
                 photoMsg?.let { m -> item { Text(m, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }
                 photoResult?.let { r ->
                     item {
@@ -694,6 +703,7 @@ private fun AddFoodSheet(
                             if (onlineState == "loading") CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         }
                     }
+                    if (onlineState == "loading") item { ShimmerRows(3) }
                     when {
                         onlineState == "done" && online.isEmpty() -> item { HintText("İnternette de bulunamadı. Barkodu okutmayı ya da \"Elle gir\"i dene.") }
                         onlineState != "" && onlineState != "loading" && onlineState != "done" -> item { HintText(onlineState) }
@@ -981,4 +991,33 @@ private fun PhotoResultCard(
         HintText("Bu bir tahmin: porsiyon gözle kestirildiği için ±%20-30 sapabilir. Ekledikten sonra kayda dokunup porsiyonu düzeltebilirsin.")
         if (r.items.isNotEmpty()) PrimaryButton("Hepsini ${meal.label} öğününe ekle · ${r.items.sumOf { it.kcal }} kcal", onClick = { onAddAll(r.items) }, icon = Icons.Rounded.Add)
     }
+}
+
+
+/** Sola kaydırınca sil (altta "Geri al" çıkar). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeToDelete(onDelete: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val state = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
+        if (v == SwipeToDismissBoxValue.EndToStart) { onDelete(); true } else false
+    })
+    SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            val p = state.progress
+            Box(
+                Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = if (state.targetValue == SwipeToDismissBoxValue.EndToStart) 0.85f else 0.35f * p)),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Row(Modifier.padding(end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sil", color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Rounded.DeleteOutline, null, tint = Color.White)
+                }
+            }
+        }
+    ) { content() }
 }
