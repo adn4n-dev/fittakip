@@ -20,7 +20,7 @@ class FitWidget : AppWidgetProvider() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
                 val dao = com.fittakip.app.data.AppDatabase.get(context).dao()
-                val st = com.fittakip.app.data.SettingsStore(context).state.value
+                val st = com.fittakip.app.data.SettingsStore.get(context).state.value
                 val today = java.time.LocalDate.now().toEpochDay()
                 val days = dao.streakDays().toSet() + st.frozen
                 val streak = com.fittakip.app.domain.Gamification.currentStreak(days, today)

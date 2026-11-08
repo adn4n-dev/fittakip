@@ -127,7 +127,13 @@ data class AppSettings(
 
 /** Küçük ayarlar SharedPreferences'ta; değişiklikler StateFlow ile ekrana akar. */
 class SettingsStore(context: Context) {
-    companion object { const val PREFS = "fit_settings" }
+    companion object {
+        const val PREFS = "fit_settings"
+        @Volatile private var instance: SettingsStore? = null
+        /** Uygulamanın tamamı (ekranlar, arka plan işleri, widget) aynı kopyayı kullanır; böylece biri diğerinin değişikliğinin üstüne yazmaz. */
+        fun get(context: Context): SettingsStore =
+            instance ?: synchronized(this) { instance ?: SettingsStore(context.applicationContext).also { instance = it } }
+    }
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** Yedekten geri yükleme sonrası ayarları diskten yeniden oku. */

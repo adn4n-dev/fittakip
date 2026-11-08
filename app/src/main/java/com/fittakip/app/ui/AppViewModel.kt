@@ -44,7 +44,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = AppDatabase.get(app)
     private val dao = db.dao()
-    private val store = SettingsStore(app)
+    private val store = SettingsStore.get(app)
     val settings: StateFlow<AppSettings> = store.state
     /** Her okunuşta güncel gün: gece yarısından sonra kayıtlar doğru güne yazılır. */
     val today: Long get() = LocalDate.now().toEpochDay()
@@ -84,6 +84,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private var lastSetAt = 0L
     private var holdWorkoutDay = false
+    private var backgroundAt = 0L
+
+    /** Antrenman bittiyse (3 saattir set yok, seans kapalı) gece yarısından kalan günü bırak. */
+    private fun releaseHoldIfDone() {
+        if (holdWorkoutDay && !workoutInProgress()) { holdWorkoutDay = false; _workoutDay.value = today }
+    }
+
+    fun onAppPause() { backgroundAt = System.currentTimeMillis() }
+
+    /** 10 dakikadan uzun süre sonra geri dönünce geçmiş güne bakarken kalınmasın: bugüne dön (antrenman sürüyorsa hariç). */
+    fun onAppResume() {
+        releaseHoldIfDone()
+        if (backgroundAt > 0 && System.currentTimeMillis() - backgroundAt > 10 * 60_000L) {
+            _day.value = today
+            if (!workoutInProgress()) { holdWorkoutDay = false; _workoutDay.value = today }
+        }
+        backgroundAt = 0
+        store.reload()
+    }
     private fun workoutInProgress(): Boolean {
         val now = System.currentTimeMillis()
         val session = settings.value.sessionStart
@@ -140,6 +159,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         // Gün değişince, "bugün"e bakan ekranlar yeni güne geçsin (geçmiş güne bakılıyorsa dokunma)
+        viewModelScope.launch {
+            while (true) { kotlinx.coroutines.delay(60_000); releaseHoldIfDone() }
+        }
         viewModelScope.launch {
             var last = LocalDate.now().toEpochDay()
             dayTicker.collect { d ->

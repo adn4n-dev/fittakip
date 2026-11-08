@@ -17,7 +17,7 @@ class FitApp : Application() {
         super.onCreate()
         // Önceki sürümde indirilmiş olabilecek 2,6 GB'lık telefon modelini temizle (artık Gemini kullanılıyor)
         runCatching {
-            val st = com.fittakip.app.data.SettingsStore(this)
+            val st = com.fittakip.app.data.SettingsStore.get(this)
             val id = st.state.value.modelDownloadId
             if (id != 0L) getSystemService(android.app.DownloadManager::class.java).remove(id)
             if (id != 0L) st.update { it.copy(modelDownloadId = 0) }

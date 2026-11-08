@@ -44,7 +44,7 @@ object DriveBackup {
         val t = token ?: DriveSync.tokenSilently(context) ?: return "Drive izni gerekli. Ayarlar'dan Drive yedeğini yeniden aç."
         return try {
             DriveSync.save(t, Backup.export(AppDatabase.get(context), context))
-            SettingsStore(context).update { it.copy(lastDriveBackup = System.currentTimeMillis()) }
+            SettingsStore.get(context).update { it.copy(lastDriveBackup = System.currentTimeMillis()) }
             null
         } catch (e: Exception) {
             e.message ?: "Drive yedeği alınamadı."
@@ -54,7 +54,7 @@ object DriveBackup {
 
 class DriveBackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        if (!SettingsStore(applicationContext).state.value.driveBackupOn) return Result.success()
+        if (!SettingsStore.get(applicationContext).state.value.driveBackupOn) return Result.success()
         val err = DriveBackup.run(applicationContext)
         return if (err == null || err.contains("izni")) Result.success() else Result.retry()
     }

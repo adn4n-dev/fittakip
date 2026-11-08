@@ -200,7 +200,7 @@ private fun CompareRow(label: String, now: Double?, before: Double?, unit: Strin
 // ---------------- Ayarlar ----------------
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications: () -> Unit, onProgram: () -> Unit = {}) {
+fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications: () -> Unit, onProgram: () -> Unit = {}, onStatus: () -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val state by vm.profile.collectAsStateWithLifecycle()
     var editProfile by rememberSaveable { mutableStateOf(false) }
@@ -224,6 +224,17 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
     ) {
         item { SubHeader("Ayarlar", onBack) }
 
+        item {
+            Surface(onClick = onStatus, shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), color = FitColors.Lime.copy(alpha = 0.10f), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("🩺 Uygulama durumu", style = MaterialTheme.typography.titleSmall)
+                        HintText("Barkod, market ürünleri, fotoğraf, Drive, bildirimler… hangisi çalışıyor, hangisi çalışmıyor?")
+                    }
+                    Text("›", style = MaterialTheme.typography.headlineSmall, color = FitColors.Lime)
+                }
+            }
+        }
         item { AccountCard(vm, settings) }
 
         item {

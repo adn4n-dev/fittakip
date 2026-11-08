@@ -124,6 +124,18 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
 
     val openExercise: (String) -> Unit = { name -> vm.detailExercise.value = name; sub = Sub.EXERCISE }
     BackHandler(enabled = sub != null) { sub = null }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> vm.onAppPause()
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> vm.onAppResume()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
     BackHandler(enabled = sub == null && tab != 0) { tab = 0 }
 
     val tabs = listOf(
@@ -155,10 +167,11 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
                     when (s) {
                         Sub.ACHIEVEMENTS -> AchievementsScreen(vm) { sub = null }
                         Sub.REPORT -> WeeklyReportScreen(vm) { sub = null }
-                        Sub.SETTINGS -> SettingsScreen(vm, onBack = { sub = null }, onRequestNotifications = askNotifications, onProgram = { sub = Sub.PROGRAM })
+                        Sub.SETTINGS -> SettingsScreen(vm, onBack = { sub = null }, onRequestNotifications = askNotifications, onProgram = { sub = Sub.PROGRAM }, onStatus = { sub = Sub.STATUS })
                         Sub.HABITS -> HabitsScreen(vm) { sub = null }
                         Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
                         Sub.PROGRAM -> ProgramScreen(vm) { sub = null }
+                        Sub.STATUS -> StatusScreen { sub = Sub.SETTINGS }
                         null -> Crossfade(targetState = tab, label = "tab") { t ->
                             when (t) {
                                 0 -> TodayScreen(vm, onTab = { tab = it }, onOpen = { sub = it })

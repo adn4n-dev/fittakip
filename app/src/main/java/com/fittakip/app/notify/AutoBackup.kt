@@ -26,7 +26,7 @@ object AutoBackup {
     }
 
     suspend fun run(context: Context): Boolean {
-        val store = SettingsStore(context)
+        val store = SettingsStore.get(context)
         val tree = store.state.value.autoBackupUri.takeIf { it.isNotEmpty() }?.let(Uri::parse) ?: return false
         return try {
             val json = Backup.export(AppDatabase.get(context), context)

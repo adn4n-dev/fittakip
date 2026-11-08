@@ -141,7 +141,7 @@ class MorningWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val days = AppDatabase.get(applicationContext).dao().activeDays().toSet()
         val streak = Gamification.currentStreak(days, today)
         val quote = com.fittakip.app.data.QUOTES[(today % com.fittakip.app.data.QUOTES.size).toInt()]
-        val st = com.fittakip.app.data.SettingsStore(applicationContext).state.value
+        val st = com.fittakip.app.data.SettingsStore.get(applicationContext).state.value
         val dayName = com.fittakip.app.data.WEEKDAY_NAMES[LocalDate.now().dayOfWeek.value - 1]
         val recent = AppDatabase.get(applicationContext).dao().setsSince(minOf(st.rotationStart, today - 120))
         val dayPlan = com.fittakip.app.domain.PlanResolver.forDay(st, recent, today)
@@ -169,7 +169,7 @@ class WaterWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val hour = LocalDateTime.now().hour
         if (hour !in 9..21) return Result.success()
         val dao = AppDatabase.get(applicationContext).dao()
-        val st = com.fittakip.app.data.SettingsStore(applicationContext).state.value
+        val st = com.fittakip.app.data.SettingsStore.get(applicationContext).state.value
         val goal = Gamification.waterGoal(dao.profileNow(), st)
         val drank = dao.waterOn(LocalDate.now().toEpochDay())
         // Gün içinde beklenen miktar: 09:00'da 0, 21:00'de hedefin tamamı
@@ -185,7 +185,7 @@ class WaterWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 /** Sabah alarmı (ve telefon yeniden başlayınca alarmı tekrar kurma). */
 class MorningAlarmReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: android.content.Intent) {
-        val on = com.fittakip.app.data.SettingsStore(context).state.value.morningOn
+        val on = com.fittakip.app.data.SettingsStore.get(context).state.value.morningOn
         if (intent.action != android.content.Intent.ACTION_BOOT_COMPLETED && on) {
             WorkManager.getInstance(context).enqueue(androidx.work.OneTimeWorkRequestBuilder<MorningWorker>().build())
         }
