@@ -153,7 +153,7 @@ object Backup {
     }
 
     /** Cihaza bağlı olanlar (yedek klasörü izni, açık antrenman) yedeğe girmez. */
-    private val DEVICE_ONLY = setOf("autoBackupUri", "lastAutoBackup", "sessionStart", "driveBackupOn", "lastDriveBackup", "anthropicKey", "modelDownloadId")
+    private val DEVICE_ONLY = setOf("autoBackupUri", "lastAutoBackup", "sessionStart", "driveBackupOn", "lastDriveBackup", "anthropicKey", "modelDownloadId", "mealNotified")
 
     /** SharedPreferences'taki tüm ayarlar (program, şablonlar, salon, notlar...) türleriyle birlikte. */
     fun exportPrefs(context: android.content.Context): JSONObject {

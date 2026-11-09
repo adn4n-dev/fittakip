@@ -111,6 +111,18 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     var moreOptions by rememberSaveable { mutableStateOf(false) }
 
     /** Spor modu: hedefi tek dokunuşla kaydet, süperset partnerine ya da sıradaki harekete geç. */
+    /** Üşengeç modu: bu hareketin kalan setlerini aynı ağırlık/tekrarla tek seferde kaydet, sonrakine geç. */
+    fun completeRemaining(w: Double, r: Int) {
+        val name = exercise.trim()
+        val cur = template?.items?.firstOrNull { it.exercise.equals(name, true) } ?: return
+        val left = cur.sets - doneSets(cur.exercise)
+        if (left <= 0) return
+        repeat(left) { vm.addSet(name, w, r, "", false, null, null) }
+        val nx = nextPlanExercise(cur.exercise)
+        if (nx != null) { pick(nx); vm.toast("${cur.exercise}: $left set eklendi ✅ Sıradaki: $nx") }
+        else vm.toast("${template.name} bitti 🎉 Eline sağlık!")
+    }
+
     fun logAndAdvance(w: Double, r: Int) {
         val name = exercise.trim()
         val cur = template?.items?.firstOrNull { it.exercise.equals(name, true) }
@@ -468,6 +480,8 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
             restEnd = restEnd, vm = vm,
             nextName = item?.let { nextPlanExercise(it.exercise) },
             onSkip = { item?.let { nextPlanExercise(it.exercise) }?.let { pick(it) } },
+            remaining = item?.let { it.sets - doneSets(it.exercise) } ?: 0,
+            onCompleteRemaining = { kg.toNum()?.let { w -> reps.toNum()?.toInt()?.let { r -> if (r > 0) completeRemaining(w, r) } } },
             onLog = { kg.toNum()?.let { w -> reps.toNum()?.toInt()?.let { r -> if (r > 0) logAndAdvance(w, r) } } },
             onClose = { focus = false }
         )
@@ -700,7 +714,8 @@ private fun FocusMode(
     exercise: String, item: com.fittakip.app.data.PlanItem?, setNo: Int, done: Int, total: Int, lastTime: String?,
     kg: String, reps: String, onKg: (String) -> Unit, onReps: (String) -> Unit,
     restEnd: Long?, vm: AppViewModel, nextName: String?,
-    onSkip: () -> Unit, onLog: () -> Unit, onClose: () -> Unit
+    onSkip: () -> Unit, onLog: () -> Unit, onClose: () -> Unit,
+    remaining: Int = 0, onCompleteRemaining: () -> Unit = {}
 ) {
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onClose,
@@ -772,6 +787,11 @@ private fun FocusMode(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HintText(nextName?.let { "Sonraki: $it" } ?: "Son hareket", Modifier.weight(1f))
                     if (nextName != null) TextButton(onClick = onSkip) { Text("Bu hareketi geç →") }
+                }
+                if (remaining >= 2 && !resting) Row {
+                    TextButton(onClick = { burstKey++; onCompleteRemaining() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("✓✓ Kalan $remaining seti ${kg.toNum()?.clean() ?: kg} × $reps ile tamamla", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             if (burst.value in 0.01f..0.99f) {

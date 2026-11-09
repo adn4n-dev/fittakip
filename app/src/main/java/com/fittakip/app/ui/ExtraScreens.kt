@@ -291,6 +291,13 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        Text("Öğün önerisi (tek dokunuşla ekle)", style = MaterialTheme.typography.titleSmall)
+                        HintText("Kahvaltı, öğle ve akşam saatinde henüz girmediysen 'Her zamanki öğle yemeğin? ✓ Ekle' bildirimi; uygulamayı açmadan eklenir.")
+                    }
+                    Switch(checked = settings.mealNudges, onCheckedChange = { vm.setMealNudges(it); if (it) onRequestNotifications() })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
                         Text("Sabah motivasyonu", style = MaterialTheme.typography.titleSmall)
                         HintText("Her sabah 08:30'da günün sözü ve serin.")
                     }

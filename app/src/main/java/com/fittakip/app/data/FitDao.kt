@@ -181,6 +181,7 @@ interface FitDao {
     // Yedekleme
     @Query("SELECT * FROM profile") suspend fun dumpProfile(): List<Profile>
     @Query("SELECT * FROM food") suspend fun dumpFoods(): List<FoodEntry>
+    @Query("SELECT * FROM food WHERE epochDay >= :from") suspend fun foodsSince(from: Long): List<FoodEntry>
     @Query("SELECT * FROM workout_set") suspend fun dumpSets(): List<WorkoutSet>
     @Query("SELECT * FROM body_weight") suspend fun dumpWeights(): List<BodyWeight>
     @Query("SELECT * FROM water") suspend fun dumpWater(): List<WaterLog>

@@ -50,7 +50,9 @@ data class AppSettings(
     val driveBackupOn: Boolean = false,              // Google Drive'a günlük otomatik yedek
     val lastDriveBackup: Long = 0L,
     val anthropicKey: String = "",                   // fotoğraftan kalori için kullanıcının kendi Claude API anahtarı (yedeğe girmez)
-    val modelDownloadId: Long = 0L                   // telefondaki yapay zekâ modelinin süren indirmesi
+    val modelDownloadId: Long = 0L,                  // telefondaki yapay zekâ modelinin süren indirmesi
+    val mealNudges: Boolean = true,                  // öğün saatinde "her zamankini ekle" bildirimi
+    val mealNotified: String = ""                    // "20400:BREAKFAST,20400:LUNCH" bugün gösterilenler (cihaza özel)
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -189,7 +191,9 @@ class SettingsStore(context: Context) {
         driveBackupOn = prefs.getBoolean("driveBackupOn", false),
         lastDriveBackup = prefs.getLong("lastDriveBackup", 0L),
         anthropicKey = prefs.getString("anthropicKey", "") ?: "",
-        modelDownloadId = prefs.getLong("modelDownloadId", 0L)
+        modelDownloadId = prefs.getLong("modelDownloadId", 0L),
+        mealNudges = prefs.getBoolean("mealNudges", true),
+        mealNotified = prefs.getString("mealNotified", "") ?: ""
     )
 
     @Synchronized
@@ -242,6 +246,8 @@ class SettingsStore(context: Context) {
             .putLong("lastDriveBackup", s.lastDriveBackup)
             .putString("anthropicKey", s.anthropicKey)
             .putLong("modelDownloadId", s.modelDownloadId)
+            .putBoolean("mealNudges", s.mealNudges)
+            .putString("mealNotified", s.mealNotified)
             .apply()
         _state.value = s
     }

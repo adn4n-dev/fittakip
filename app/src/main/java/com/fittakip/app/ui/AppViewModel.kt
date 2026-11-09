@@ -230,6 +230,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (st.remindersOn) Reminders.schedule(app, st.reminderHour)
         Reminders.setMorning(app, st.morningOn)
         Reminders.setWater(app, st.waterRemindOn)
+        com.fittakip.app.notify.QuickLog.scheduleNudges(app, st.mealNudges)
         com.fittakip.app.notify.DriveBackup.schedule(app, st.driveBackupOn)
     }
 
@@ -246,6 +247,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setMorning(on: Boolean) { store.update { it.copy(morningOn = on) }; Reminders.setMorning(getApplication(), on) }
+    fun setMealNudges(on: Boolean) { store.update { it.copy(mealNudges = on) }; com.fittakip.app.notify.QuickLog.scheduleNudges(getApplication(), on) }
     fun setWaterReminder(on: Boolean) { store.update { it.copy(waterRemindOn = on) }; Reminders.setWater(getApplication(), on) }
 
     fun testNotification() = Reminders.show(getApplication(), "FitTakip 💪", "Bildirimler çalışıyor. Akşam serini hatırlatacağım.")

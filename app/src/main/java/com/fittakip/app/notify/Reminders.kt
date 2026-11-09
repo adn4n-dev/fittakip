@@ -24,6 +24,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 
 object Reminders {
     private const val WORK = "daily_reminder"
@@ -88,7 +89,7 @@ object Reminders {
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun show(context: Context, title: String, text: String, id: Int = 1) {
+    fun show(context: Context, title: String, text: String, id: Int = 1, actions: List<NotificationCompat.Action> = emptyList()) {
         if (!canNotify(context)) return
         createChannel(context)
         val intent = PendingIntent.getActivity(
@@ -102,6 +103,7 @@ object Reminders {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(intent)
             .setAutoCancel(true)
+            .apply { actions.forEach { addAction(it) } }
             .build()
         try {
             NotificationManagerCompat.from(context).notify(id, n)
@@ -175,7 +177,10 @@ class WaterWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         // Gün içinde beklenen miktar: 09:00'da 0, 21:00'de hedefin tamamı
         val expected = goal * (hour - 9) / 12
         if (drank < expected - 250) {
-            Reminders.show(applicationContext, "💧 Su içme vakti", "Bugün $drank / $goal ml içtin. Bir bardak su iyi gelir.", 3)
+            Reminders.show(
+                applicationContext, "💧 Su içme vakti", "Bugün $drank / $goal ml içtin. Bir bardak su iyi gelir.", 3,
+                listOf(QuickLog.action(applicationContext, "+250 ml", QuickLog.ADD_WATER, 3))
+            )
         }
         return Result.success()
     }
@@ -190,5 +195,89 @@ class MorningAlarmReceiver : android.content.BroadcastReceiver() {
             WorkManager.getInstance(context).enqueue(androidx.work.OneTimeWorkRequestBuilder<MorningWorker>().build())
         }
         Reminders.setMorning(context, on)
+    }
+}
+
+
+/**
+ * Öğün saatinde (kahvaltı 08-10, öğle 12-14, akşam 18-20) o öğün henüz girilmediyse ve
+ * "her zamanki" bir öğün varsa: "Her zamanki kahvaltın? Ekle" bildirimi. Saatte bir kontrol eder, öğün başına günde bir kez.
+ */
+class MealNudgeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val store = com.fittakip.app.data.SettingsStore.get(applicationContext)
+        val st = store.state.value
+        if (!st.mealNudges || st.fastingMode) return Result.success()
+        val meal = when (LocalDateTime.now().hour) {
+            in 8..10 -> com.fittakip.app.data.Meal.BREAKFAST
+            in 12..14 -> com.fittakip.app.data.Meal.LUNCH
+            in 18..20 -> com.fittakip.app.data.Meal.DINNER
+            else -> return Result.success()
+        }
+        val today = LocalDate.now().toEpochDay()
+        val key = "$today:${meal.name}"
+        if (st.mealNotified.split(',').contains(key)) return Result.success()
+        val foods = AppDatabase.get(applicationContext).dao().foodsSince(today - 15)
+        if (foods.any { it.epochDay == today && com.fittakip.app.data.Meal.from(it.meal) == meal }) return Result.success()
+        val usual = com.fittakip.app.domain.Routine.usual(foods, meal, today) ?: return Result.success()
+        val id = 40 + meal.ordinal
+        Reminders.show(
+            applicationContext, "${meal.emoji} Her zamanki ${com.fittakip.app.data.Meal.yours(meal)}?",
+            "${usual.label} · ${usual.kcal} kcal\nDokunmadan ekleyebilirsin.", id,
+            listOf(QuickLog.action(applicationContext, "✓ Ekle", QuickLog.ADD_USUAL, id, meal.name))
+        )
+        store.update { s -> s.copy(mealNotified = (s.mealNotified.split(',').filter { it.startsWith("$today:") } + key).joinToString(",")) }
+        return Result.success()
+    }
+}
+
+/** Bildirim butonları: uygulamayı açmadan kayıt. */
+class QuickLog : android.content.BroadcastReceiver() {
+    companion object {
+        const val ADD_WATER = "com.fittakip.app.ADD_WATER"
+        const val ADD_USUAL = "com.fittakip.app.ADD_USUAL"
+
+        fun action(context: Context, label: String, act: String, notifId: Int, meal: String? = null): NotificationCompat.Action {
+            val i = Intent(context, QuickLog::class.java).setAction(act).putExtra("id", notifId).putExtra("meal", meal)
+            val pi = PendingIntent.getBroadcast(context, notifId * 10 + act.length, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            return NotificationCompat.Action.Builder(0, label, pi).build()
+        }
+
+        fun scheduleNudges(context: Context, on: Boolean) {
+            val wm = WorkManager.getInstance(context)
+            if (!on) { wm.cancelUniqueWork("meal_nudge"); return }
+            wm.enqueueUniquePeriodicWork(
+                "meal_nudge", ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<MealNudgeWorker>(1, TimeUnit.HOURS).build()
+            )
+        }
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val pending = goAsync()
+        val id = intent.getIntExtra("id", 0)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val dao = AppDatabase.get(context).dao()
+                val today = LocalDate.now().toEpochDay()
+                when (intent.action) {
+                    ADD_WATER -> {
+                        dao.addWater(com.fittakip.app.data.WaterLog(epochDay = today, ml = 250))
+                        Reminders.show(context, "💧 +250 ml eklendi", "Bugün toplam ${dao.waterOn(today)} ml.", id)
+                    }
+                    ADD_USUAL -> {
+                        val meal = com.fittakip.app.data.Meal.from(intent.getStringExtra("meal") ?: "SNACK")
+                        val usual = com.fittakip.app.domain.Routine.usual(dao.foodsSince(today - 15), meal, today)
+                        if (usual != null) {
+                            dao.addFoods(usual.items.map { it.copy(id = 0, epochDay = today, meal = meal.name) })
+                            Reminders.show(context, "✓ ${meal.label} eklendi", "${usual.label} · ${usual.kcal} kcal", id)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }

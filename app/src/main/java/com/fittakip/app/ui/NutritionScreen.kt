@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Mic
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -68,6 +69,7 @@ fun NutritionScreen(vm: AppViewModel) {
     val day by vm.selectedDay.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf(false) }
     var sheet by rememberSaveable { mutableStateOf(false) }
+    var voiceStart by rememberSaveable { mutableStateOf(false) }
     var quick by rememberSaveable { mutableStateOf(false) }
     var editFood by remember { mutableStateOf<FoodEntry?>(null) }
 
@@ -119,7 +121,14 @@ fun NutritionScreen(vm: AppViewModel) {
         // En sık yapılan iş en üstte: yemek ekle
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrimaryButton("Yemek ekle · ara ya da barkod okut", onClick = { sheet = true }, icon = Icons.Rounded.Add)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PrimaryButton("Yemek ekle", onClick = { sheet = true }, icon = Icons.Rounded.Add, modifier = Modifier.weight(1f))
+                    // Üşengeç modu: söyle, eklesin
+                    FilledTonalIconButton(
+                        onClick = { voiceStart = true; sheet = true },
+                        modifier = Modifier.size(56.dp), shape = RoundedCornerShape(18.dp)
+                    ) { Icon(Icons.Rounded.Mic, "Sesle ekle", modifier = Modifier.size(26.dp)) }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Hızlı kalori", onClick = { quick = true }, icon = Icons.Rounded.Bolt, modifier = Modifier.weight(1f))
                     SecondaryButton("Dünü kopyala", onClick = { vm.copyPreviousDay() }, icon = Icons.Rounded.ContentCopy, modifier = Modifier.weight(1f))
@@ -228,7 +237,9 @@ fun NutritionScreen(vm: AppViewModel) {
             onToggleFavorite = { vm.toggleFavorite(it) },
             onSaveCustom = { n, k, pr, cb, ft -> vm.saveCustomFood(n, k, pr, cb, ft) },
             onDeleteCustom = { vm.deleteCustomFood(it) },
-            onDismiss = { sheet = false }
+            startVoice = voiceStart,
+            today = vm.today,
+            onDismiss = { sheet = false; voiceStart = false }
         ) { name, kcal, pr, cb, ft, meal -> vm.addFood(name, kcal, pr, cb, ft, meal) }
     }
 
@@ -420,11 +431,39 @@ private fun AddFoodSheet(
     onToggleFavorite: (String) -> Unit,
     onSaveCustom: (String, Int, Double, Double, Double) -> Unit,
     onDeleteCustom: (CustomFood) -> Unit,
+    startVoice: Boolean = false,
+    today: Long = java.time.LocalDate.now().toEpochDay(),
     onDismiss: () -> Unit,
     onAdd: (String, Int, Double, Double, Double, Meal) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var meal by remember { mutableStateOf(Meal.forHour(LocalTime.now().hour, fasting)) }
+
+    // ---- Üşengeç modu: her zamanki öğün + sesle ekleme ----
+    val usual = remember(history, meal, today) { com.fittakip.app.domain.Routine.usual(history, meal, today) }
+    var voiceResult by remember { mutableStateOf<com.fittakip.app.domain.VoiceParser.Parsed?>(null) }
+    var voiceMsg by remember { mutableStateOf<String?>(null) }
+    val voiceCatalog = remember(history, customFoods) {
+        // Önce kendi geçmişin ve yemeklerin (senin porsiyonların), sonra hazır liste
+        history.distinctBy { it.name.lowercase() }.map { FoodItem(it.name, "senin porsiyonun", it.kcal, it.protein, it.carb, it.fat) } +
+            customFoods.map { FoodItem(it.name, it.portion, it.kcal, it.protein, it.carb, it.fat) } + FOOD_DB
+    }
+    val listen = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { res ->
+        val heard = res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (heard.isNullOrBlank()) { if (res.resultCode == android.app.Activity.RESULT_OK) voiceMsg = "Bir şey duyamadım, tekrar dene."; return@rememberLauncherForActivityResult }
+        val parsed = com.fittakip.app.domain.VoiceParser.parse(heard, voiceCatalog)
+        voiceResult = parsed
+        voiceMsg = if (parsed.matches.isEmpty()) "\"$heard\" — listede eşleşen yemek bulamadım. Arama kutusuna yazmayı dene." else null
+    }
+    fun startListening() {
+        val i = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "tr-TR")
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Ne yedin? Ör: iki yumurta, bir simit, bir çay")
+        try { listen.launch(i) } catch (e: android.content.ActivityNotFoundException) { voiceMsg = "Telefonda ses tanıma bulunamadı (Google uygulaması gerekli)." }
+    }
+    LaunchedEffect(startVoice) { if (startVoice) startListening() }
+
     var query by remember { mutableStateOf("") }
     var manual by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf<FoodItem?>(null) }
@@ -614,6 +653,35 @@ private fun AddFoodSheet(
                         trailingIcon = { IconButton(onClick = { scanBarcode() }) { Icon(Icons.Rounded.QrCodeScanner, "Barkod okut") } },
                         singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()
                     )
+                }
+                usual?.let { u ->
+                    if (voiceResult == null) item {
+                        Surface(
+                            onClick = { u.items.forEach { e -> onAdd(e.name, e.kcal, e.protein, e.carb, e.fat, meal) }; onDismiss() },
+                            shape = RoundedCornerShape(18.dp), color = FitColors.Lime.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("${meal.emoji} Her zamanki ${Meal.yours(meal)}", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
+                                    HintText("${u.label} · ${u.kcal} kcal")
+                                }
+                                Text("✓ Ekle", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime)
+                            }
+                        }
+                    }
+                }
+                item {
+                    SecondaryButton("🎤 Söyle, ekleyeyim", onClick = { startListening() }, modifier = Modifier.fillMaxWidth())
+                }
+                voiceMsg?.let { m -> item { HintText(m) } }
+                voiceResult?.let { v ->
+                    if (v.matches.isNotEmpty()) item {
+                        VoiceResultCard(v, meal, onChange = { voiceResult = it }, onDismiss = { voiceResult = null }) { list ->
+                            list.forEach { m -> onAdd(m.item.name + if (m.qty != 1.0) " ×${m.qty.toString().removeSuffix(".0").replace('.', ',')}" else "",
+                                m.kcal, m.item.p * m.qty, m.item.c * m.qty, m.item.f * m.qty, meal) }
+                            onDismiss()
+                        }
+                    }
                 }
                 scanMsg?.let { m ->
                     item {
@@ -1020,4 +1088,35 @@ fun SwipeToDelete(onDelete: () -> Unit, modifier: Modifier = Modifier, content: 
             }
         }
     ) { content() }
+}
+
+
+/** Sesle söylenenler: "anladıklarım", miktarı ± ile düzelt, istemediğini çıkar, tek dokunuşla ekle. */
+@Composable
+private fun VoiceResultCard(
+    v: com.fittakip.app.domain.VoiceParser.Parsed, meal: Meal,
+    onChange: (com.fittakip.app.domain.VoiceParser.Parsed) -> Unit, onDismiss: () -> Unit,
+    onAddAll: (List<com.fittakip.app.domain.VoiceParser.Match>) -> Unit
+) {
+    FitCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🎤 Anladıklarım", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Kapat") }
+        }
+        v.matches.forEachIndexed { i, m ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(m.item.name, style = MaterialTheme.typography.titleSmall)
+                    HintText("${m.item.portion} · duyduğum: \"${m.heard}\"")
+                }
+                IconButton(onClick = { onChange(v.copy(matches = v.matches.toMutableList().also { it[i] = m.copy(qty = (m.qty - 0.5).coerceAtLeast(0.5)) })) }) { Text("−") }
+                Text(m.qty.toString().removeSuffix(".0").replace('.', ',') + "×", style = MaterialTheme.typography.titleSmall)
+                IconButton(onClick = { onChange(v.copy(matches = v.matches.toMutableList().also { it[i] = m.copy(qty = m.qty + 0.5) })) }) { Text("+") }
+                Text("${m.kcal}", style = MaterialTheme.typography.titleSmall, color = FitColors.Lime, modifier = Modifier.widthIn(min = 40.dp))
+                IconButton(onClick = { onChange(v.copy(matches = v.matches - m)) }) { Icon(Icons.Rounded.Close, "${m.item.name} çıkar") }
+            }
+        }
+        if (v.unknown.isNotEmpty()) HintText("Anlayamadım: " + v.unknown.joinToString(", ") { "\"$it\"" } + " — bunları arama kutusundan ekleyebilirsin.")
+        if (v.matches.isNotEmpty()) PrimaryButton("Hepsini ${meal.label} öğününe ekle · ${v.matches.sumOf { it.kcal }} kcal", onClick = { onAddAll(v.matches) }, icon = Icons.Rounded.Add)
+    }
 }

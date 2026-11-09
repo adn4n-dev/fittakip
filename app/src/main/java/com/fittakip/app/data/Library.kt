@@ -221,6 +221,12 @@ enum class Meal(val label: String, val emoji: String) {
             else -> SNACK
         }
 
+        /** "Her zamanki ___" için doğru Türkçe: kahvaltın, öğle yemeğin, akşam yemeğin… */
+        fun yours(m: Meal) = when (m) {
+            BREAKFAST -> "kahvaltın"; LUNCH -> "öğle yemeğin"; DINNER -> "akşam yemeğin"
+            SNACK -> "ara öğünün"; SAHUR -> "sahurun"; IFTAR -> "iftarın"
+        }
+
         /** Seçilebilir öğünler: oruç modunda sahur / iftar / ara öğün. */
         fun choices(fasting: Boolean) = if (fasting) listOf(SAHUR, IFTAR, SNACK) else listOf(BREAKFAST, LUNCH, DINNER, SNACK)
     }

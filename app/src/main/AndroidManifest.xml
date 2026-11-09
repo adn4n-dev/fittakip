@@ -44,6 +44,10 @@
             android:value="barcode_ui" />
 
         <receiver
+            android:name=".notify.QuickLog"
+            android:exported="false" />
+
+        <receiver
             android:name=".notify.MorningAlarmReceiver"
             android:exported="false">
             <intent-filter>
