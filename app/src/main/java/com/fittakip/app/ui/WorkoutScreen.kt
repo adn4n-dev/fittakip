@@ -49,7 +49,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
+fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}, autoFocus: Boolean = false, onDone: () -> Unit = {}) {
     val sets by vm.sets.collectAsStateWithLifecycle()
     val cardio by vm.cardio.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -108,6 +108,8 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
     }
 
     var focus by rememberSaveable { mutableStateOf(false) }
+    // Sade mod: antrenman ekranı doğrudan spor moduyla açılır; spor modu kapanınca ana ekrana dönülür.
+    var autoOpened by rememberSaveable { mutableStateOf(false) }
     var moreOptions by rememberSaveable { mutableStateOf(false) }
 
     /** Spor modu: hedefi tek dokunuşla kaydet, süperset partnerine ya da sıradaki harekete geç. */
@@ -464,6 +466,14 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
         library = false
     }
 
+    LaunchedEffect(template?.name) {
+        if (autoFocus && !autoOpened && template != null) {
+            autoOpened = true
+            if (template.items.none { it.exercise.equals(exercise.trim(), true) && doneSets(it.exercise) < it.sets })
+                template.items.firstOrNull { doneSets(it.exercise) < it.sets }?.let { pick(it.exercise) }
+            focus = true
+        }
+    }
     if (focus && template != null) {
         val item = template.items.firstOrNull { it.exercise.equals(exercise.trim(), true) }
         val past = contextPast(exercise.trim())
@@ -483,7 +493,7 @@ fun WorkoutScreen(vm: AppViewModel, onOpenExercise: (String) -> Unit = {}) {
             remaining = item?.let { it.sets - doneSets(it.exercise) } ?: 0,
             onCompleteRemaining = { kg.toNum()?.let { w -> reps.toNum()?.toInt()?.let { r -> if (r > 0) completeRemaining(w, r) } } },
             onLog = { kg.toNum()?.let { w -> reps.toNum()?.toInt()?.let { r -> if (r > 0) logAndAdvance(w, r) } } },
-            onClose = { focus = false }
+            onClose = { focus = false; if (autoFocus) onDone() }
         )
     }
 }

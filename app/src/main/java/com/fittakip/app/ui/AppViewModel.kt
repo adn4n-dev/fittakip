@@ -76,6 +76,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _day = MutableStateFlow(LocalDate.now().toEpochDay())
     val selectedDay: StateFlow<Long> = _day
     fun shiftDay(delta: Int) { _day.value = (_day.value + delta).coerceAtMost(today) }
+    fun goToday() { _day.value = today }
 
     /** Antrenman ekranında set eklenen gün (geçmişe set girmek için). */
     private val _workoutDay = MutableStateFlow(LocalDate.now().toEpochDay())
@@ -230,7 +231,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (st.remindersOn) Reminders.schedule(app, st.reminderHour)
         Reminders.setMorning(app, st.morningOn)
         Reminders.setWater(app, st.waterRemindOn)
-        com.fittakip.app.notify.QuickLog.scheduleNudges(app, st.mealNudges)
+        // Sade mod bildirimleri (bir kez): sabah planı + akşam tek hatırlatma + pazar karnesi; başka bildirim yok.
+        if (st.simpleMode && !st.simpleDefaultsApplied) {
+            store.update { it.copy(morningOn = true, remindersOn = true, reminderHour = 21, mealNudges = false, waterRemindOn = false, simpleDefaultsApplied = true) }
+            Reminders.setMorning(app, true); Reminders.schedule(app, 21); Reminders.setWater(app, false)
+        }
+        com.fittakip.app.notify.QuickLog.scheduleNudges(app, true)   // saatlik kontrol: öğün önerisi (açıksa) + pazar karnesi
         com.fittakip.app.notify.DriveBackup.schedule(app, st.driveBackupOn)
     }
 

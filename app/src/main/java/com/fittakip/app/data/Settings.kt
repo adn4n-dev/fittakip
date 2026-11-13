@@ -52,7 +52,9 @@ data class AppSettings(
     val anthropicKey: String = "",                   // fotoğraftan kalori için kullanıcının kendi Claude API anahtarı (yedeğe girmez)
     val modelDownloadId: Long = 0L,                  // telefondaki yapay zekâ modelinin süren indirmesi
     val mealNudges: Boolean = true,                  // öğün saatinde "her zamankini ekle" bildirimi
-    val mealNotified: String = ""                    // "20400:BREAKFAST,20400:LUNCH" bugün gösterilenler (cihaza özel)
+    val mealNotified: String = "",                   // "20400:BREAKFAST,20400:LUNCH" bugün gösterilenler (cihaza özel)
+    val simpleMode: Boolean = true,                  // sade mod: tek ana ekran (Antrenman, Kalori, Su, Tartı, Karne)
+    val simpleDefaultsApplied: Boolean = false       // sade mod bildirim ayarları bir kez uygulandı mı
 ) {
     /** Bu haftaya özel gün değişiklikleri (gün → antrenman adı ya da OFF). Geçmiş haftalar otomatik yok sayılır. */
     val overrides: Map<Long, String>
@@ -193,7 +195,9 @@ class SettingsStore(context: Context) {
         anthropicKey = prefs.getString("anthropicKey", "") ?: "",
         modelDownloadId = prefs.getLong("modelDownloadId", 0L),
         mealNudges = prefs.getBoolean("mealNudges", true),
-        mealNotified = prefs.getString("mealNotified", "") ?: ""
+        mealNotified = prefs.getString("mealNotified", "") ?: "",
+        simpleMode = prefs.getBoolean("simpleMode", true),
+        simpleDefaultsApplied = prefs.getBoolean("simpleDefaultsApplied", false)
     )
 
     @Synchronized
@@ -248,6 +252,8 @@ class SettingsStore(context: Context) {
             .putLong("modelDownloadId", s.modelDownloadId)
             .putBoolean("mealNudges", s.mealNudges)
             .putString("mealNotified", s.mealNotified)
+            .putBoolean("simpleMode", s.simpleMode)
+            .putBoolean("simpleDefaultsApplied", s.simpleDefaultsApplied)
             .apply()
         _state.value = s
     }

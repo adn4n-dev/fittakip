@@ -420,7 +420,7 @@ private fun WaterCard(ml: Int, goal: Int, onAdd: (Int) -> Unit, onUndo: () -> Un
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddFoodSheet(
+internal fun AddFoodSheet(
     fasting: Boolean,
     history: List<FoodEntry>,
     customFoods: List<CustomFood>,

@@ -235,6 +235,18 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onRequestNotifications:
                 }
             }
         }
+        item {
+            FitCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (settings.simpleMode) "✨ Sade mod açık" else "Sade mod", style = MaterialTheme.typography.titleSmall)
+                        HintText("Tek ana ekran: antrenman, kalori, su, tartı ve haftalık karne. Kapatınca tüm özellikler (sekmeler, rozetler, ölçüler, program ayrıntıları) geri gelir; hiçbir veri silinmez.")
+                    }
+                    Switch(checked = settings.simpleMode, onCheckedChange = { on -> vm.updateSettings { it.copy(simpleMode = on) } })
+                }
+                if (settings.simpleMode) TextButton(onClick = onProgram) { Text("Haftalık programı düzenle") }
+            }
+        }
         item { AccountCard(vm, settings) }
 
         item {

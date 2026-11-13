@@ -1,4 +1,4 @@
 package com.fittakip.app.ui
 
 /** Alt sekmelerin üzerine açılan ekranlar. */
-enum class Sub { ACHIEVEMENTS, REPORT, SETTINGS, HABITS, EXERCISE, PROGRAM, STATUS }
+enum class Sub { ACHIEVEMENTS, REPORT, SETTINGS, HABITS, EXERCISE, PROGRAM, STATUS, WORKOUT, SIMPLE_PROGRESS }

@@ -119,7 +119,9 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val days = AppDatabase.get(applicationContext).dao().activeDays().toSet()
         if (today in days) return Result.success()
         val streak = Gamification.currentStreak(days, today)
-        if (streak > 0) {
+        if (com.fittakip.app.data.SettingsStore.get(applicationContext).state.value.simpleMode) {
+            Reminders.show(applicationContext, "Bugün 1 dakikanı al 💪", "Henüz kayıt yok. Uygulamayı aç: her zamanki öğün, tartı ve su tek dokunuş.")
+        } else if (streak > 0) {
             Reminders.show(
                 applicationContext,
                 "🔥 $streak günlük serin tehlikede!",
@@ -204,9 +206,25 @@ class MorningAlarmReceiver : android.content.BroadcastReceiver() {
  * "her zamanki" bir öğün varsa: "Her zamanki kahvaltın? Ekle" bildirimi. Saatte bir kontrol eder, öğün başına günde bir kez.
  */
 class MealNudgeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    /** Pazar 19-21 arası, haftada bir: "İlerliyor muyum?" karnesi. */
+    private suspend fun weeklyKarne(store: com.fittakip.app.data.SettingsStore) {
+        val now = LocalDateTime.now()
+        if (now.dayOfWeek != java.time.DayOfWeek.SUNDAY || now.hour !in 19..21) return
+        val today = LocalDate.now().toEpochDay()
+        val key = "karne:$today"
+        if (store.state.value.mealNotified.split(',').contains(key)) return
+        val dao = AppDatabase.get(applicationContext).dao()
+        val k = com.fittakip.app.domain.Karne.compute(
+            dao.dumpSets(), dao.foodsSince(today - 7), dao.dumpWeights(), dao.profileNow(), store.state.value, today
+        )
+        Reminders.show(applicationContext, "📊 Haftalık karne: ${k.headline}", "${k.summary}\n${k.tip}", 50)
+        store.update { s -> s.copy(mealNotified = (s.mealNotified.split(',').filter { it.isNotBlank() && !it.startsWith("karne:") } + key).joinToString(",")) }
+    }
+
     override suspend fun doWork(): Result {
         val store = com.fittakip.app.data.SettingsStore.get(applicationContext)
         val st = store.state.value
+        weeklyKarne(store)
         if (!st.mealNudges || st.fastingMode) return Result.success()
         val meal = when (LocalDateTime.now().hour) {
             in 8..10 -> com.fittakip.app.data.Meal.BREAKFAST

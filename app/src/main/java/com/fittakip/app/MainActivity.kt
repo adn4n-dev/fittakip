@@ -158,7 +158,7 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
             contentColor = FitColors.Text,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
-                if (sub == null) FloatingNav(tabs, tab) { i ->
+                if (sub == null && !settings.simpleMode) FloatingNav(tabs, tab) { i ->
                     if (tab != i) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     tab = i
                 }
@@ -191,7 +191,9 @@ fun FitApp(vm: AppViewModel, shortcut: String?, onShortcutHandled: () -> Unit) {
                         Sub.EXERCISE -> ExerciseDetailScreen(vm) { sub = null }
                         Sub.PROGRAM -> ProgramScreen(vm) { sub = null }
                         Sub.STATUS -> StatusScreen { sub = Sub.SETTINGS }
-                        null -> AnimatedContent(
+                        Sub.WORKOUT -> WorkoutScreen(vm, onOpenExercise = openExercise, autoFocus = true, onDone = { sub = null })
+                        Sub.SIMPLE_PROGRESS -> SimpleProgress(vm) { sub = null }
+                        null -> if (settings.simpleMode) SimpleHome(vm, onWorkout = { sub = Sub.WORKOUT }, onProgress = { sub = Sub.SIMPLE_PROGRESS }, onSettings = { sub = Sub.SETTINGS }) else AnimatedContent(
                             targetState = tab,
                             transitionSpec = {
                                 // Sağdaki sekmeye geçince sağdan, soldakine geçince soldan kayar
